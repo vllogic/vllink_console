@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vllink WebUSB 控制台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { primary: '#00d4ff', darkBg: '#0f172a' } } }
+        }
+    </script>
+    <style>
+        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); }
+        .dark .glass { background: rgba(15, 23, 42, 0.6); }
+        .card-active { border: 2px solid #00d4ff; box-shadow: 0 0 15px rgba(0, 212, 255, 0.3); }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-darkBg text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-300">
+    <!-- 顶部栏 -->
+    <header class="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 sticky top-0 z-50 glass">
+        <div class="flex items-center gap-2">
+            <div class="w-3 h-3 bg-primary rounded-full animate-pulse"></div>
+            <h1 class="font-bold tracking-wider text-xl">VLLINK <span class="text-primary">CONSOLE</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <button id="themeToggle" class="p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors">
+                <span class="dark:hidden">🌙</span><span class="hidden dark:inline">☀️</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex h-[calc(100-4rem)]">
+        <!-- 左侧面板 (25%) -->
+        <aside class="w-1/4 border-r border-slate-200 dark:border-slate-800 p-4 overflow-y-auto">
+            <div class="space-y-4">
+                <button id="connectBtn" class="w-full py-3 bg-primary text-white rounded-xl font-bold hover:opacity-90 transition-all active:scale-95">
+                    连接调试器
+                </button>
+                <div id="deviceStatus" class="text-xs text-slate-500 text-center">未连接设备</div>
+                
+                <div class="pt-4 border-t border-slate-200 dark:border-slate-800">
+                    <h2 class="text-sm font-semibold mb-3 text-slate-400 uppercase tracking-widest">设备列表</h2>
+                    <div id="deviceList" class="space-y-3">
+                        <!-- 动态生成的卡片 -->
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 右侧功能区 (75%) -->
+        <section class="w-3/4 p-6 flex flex-col gap-6">
+            <!-- 选项卡 -->
+            <div class="flex gap-6 border-b border-slate-200 dark:border-slate-800">
+                <button class="pb-2 border-b-2 border-primary font-medium text-primary">调试器配置</button>
+                <button class="pb-2 text-slate-500 hover:text-slate-300 transition-colors">选项页1</button>
+                <button class="pb-2 text-slate-500 hover:text-slate-300 transition-colors">选项页2</button>
+            </div>
+
+            <!-- 主内容 -->
+            <div class="grid grid-cols-2 gap-6 h-full">
+                <!-- 左半部：有线配置 -->
+                <div class="glass rounded-2xl p-6 border border-slate-200 dark:border-slate-800">
+                    <h3 class="text-lg font-bold mb-4">有线调试器状态</h3>
+                    <div id="localConfig" class="space-y-4 text-sm text-slate-400">
+                        <p>别名: <span class="text-slate-100" id="localAlias">-</span></p>
+                        <p>响应延迟: <span class="text-slate-100" id="localDelay">-</span> us</p>
+                    </div>
+                </div>
+                <!-- 右半部：选定设备功能 -->
+                <div class="glass rounded-2xl p-6 border border-slate-200 dark:border-slate-800 relative overflow-hidden">
+                    <h3 class="text-lg font-bold mb-4 italic">当前选定: <span id="selectedTitle" class="text-primary">NONE</span></h3>
+                    <div class="opacity-30 flex flex-col items-center justify-center h-48">
+                        <div class="text-4xl">🛠️</div>
+                        <p class="mt-2 text-xs uppercase tracking-tighter">功能开发中...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="vllink.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
