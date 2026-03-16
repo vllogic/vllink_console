@@ -48,21 +48,20 @@ class VllinkManager {
             remote: []
         };
 
-        // 解析单个节点 (48字节): us[8], delay_us[4], reserved[4], alias[32]
         const parseNode = (offset) => {
             const aliasRaw = new Uint8Array(buffer, offset + 16, 32);
             let aliasStr = decoder.decode(aliasRaw).replace(/\0/g, '').trim();
             return {
                 us: view.getBigUint64(offset, true),
                 delay_us: view.getUint32(offset + 8, true),
-                alias: aliasStr || "Unnamed" // 如果为空则显示 Unnamed
+                alias: aliasStr || "Unnamed"
             };
         };
 
-        // Header (32字节) 后是 Local
+        // Header (32字节) + Local (48字节)
         info.local = parseNode(32);
 
-        // 后面是 9 个 Remote
+        // 9个 Remote
         for (let i = 0; i < 9; i++) {
             const offset = 32 + 48 + (i * 48);
             const node = parseNode(offset);

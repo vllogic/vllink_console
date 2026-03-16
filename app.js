@@ -1,5 +1,5 @@
 /**
- * 三模态主题管理器 (Dark | AUTO | Light)
+ * 三模态主题管理器
  */
 const ThemeManager = {
     btns: document.querySelectorAll('[data-theme]'),
@@ -9,7 +9,6 @@ const ThemeManager = {
         const saved = localStorage.getItem('vllink-theme-preference') || 'auto';
         this.apply(saved);
         this.btns.forEach(btn => btn.addEventListener('click', () => this.apply(btn.dataset.theme)));
-        
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
             if (localStorage.getItem('vllink-theme-preference') === 'auto') this.apply('auto');
         });
@@ -18,10 +17,8 @@ const ThemeManager = {
     apply(mode) {
         localStorage.setItem('vllink-theme-preference', mode);
         const isDark = mode === 'auto' ? window.matchMedia('(prefers-color-scheme: dark)').matches : mode === 'dark';
-        
         document.documentElement.classList.toggle('dark', isDark);
 
-        // UI 状态反馈
         const activeIdx = Array.from(this.btns).findIndex(b => b.dataset.theme === mode);
         this.slider.style.left = `calc(${activeIdx * 33.33}% + 4px)`;
         
@@ -29,6 +26,39 @@ const ThemeManager = {
             const isActive = btn.dataset.theme === mode;
             btn.classList.toggle('text-white', isActive);
             btn.classList.toggle('text-slate-500', !isActive);
+        });
+    }
+};
+
+/**
+ * 选项页切换逻辑
+ */
+const TabManager = {
+    btns: {
+        config: document.getElementById('tab-btn-config'),
+        tbd: document.getElementById('tab-btn-tbd')
+    },
+    contents: {
+        config: document.getElementById('tab-content-config'),
+        tbd: document.getElementById('tab-content-tbd')
+    },
+
+    init() {
+        this.btns.config.addEventListener('click', () => this.switch('config'));
+        this.btns.tbd.addEventListener('click', () => this.switch('tbd'));
+    },
+
+    switch(target) {
+        Object.keys(this.btns).forEach(key => {
+            if (key === target) {
+                this.btns[key].classList.add('tab-active');
+                this.btns[key].classList.remove('text-slate-400');
+                this.contents[key].classList.remove('hidden');
+            } else {
+                this.btns[key].classList.remove('tab-active');
+                this.btns[key].classList.add('text-slate-400');
+                this.contents[key].classList.add('hidden');
+            }
         });
     }
 };
@@ -69,32 +99,21 @@ UI.connectBtn.addEventListener('click', async () => {
             }
         }, 250);
     } catch (e) {
-        console.error(e);
         alert("Connection Failed: " + e.message);
     }
 });
 
 function updateDashboard(info) {
-    // 1. 更新有线调试器概览
     UI.localAlias.innerText = info.local.alias;
     UI.localDelay.innerText = info.local.delay_us;
 
-    // 2. 构造所有节点列表
     const all = [{ ...info.local, id: 0, type: 'USB' }];
     info.remote.forEach(r => all.push({ ...r, type: 'WIFI' }));
 
     UI.deviceList.innerHTML = all.map(dev => {
         const isSelected = info.select_idx === dev.id;
         
-        // 计算运行时长 (UPTIME)
-        // Correction: Local 节点显示其本身的 us 值，Remote 节点显示 (local.us - remote.us)
-        let duration;
-        if (dev.id === 0) {
-            duration = Number(info.local.us) / 1000000;
-        } else {
-            duration = Number(info.local.us - dev.us) / 1000000;
-        }
-        
+        let duration = dev.id === 0 ? Number(info.local.us) / 1000000 : Number(info.local.us - dev.us) / 1000000;
         const timeStr = formatTime(duration);
 
         if (isSelected) {
@@ -107,7 +126,7 @@ function updateDashboard(info) {
                  class="glass p-4 rounded-2xl cursor-pointer transition-all border border-transparent opacity-60 hover:opacity-100 ${isSelected ? 'card-active' : ''}">
                 <div class="flex justify-between items-start mb-2">
                     <span class="text-[10px] font-black tracking-tight text-slate-400 uppercase">${dev.alias}</span>
-                    <span class="text-[9px] bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full font-bold text-slate-600 dark:text-slate-300">${dev.type}</span>
+                    <span class="text-[9px] bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full font-bold">${dev.type}</span>
                 </div>
                 <div class="flex justify-between items-end font-mono">
                     <div class="text-[10px] text-slate-500">UPTIME: <span class="text-slate-600 dark:text-slate-200">${timeStr}</span></div>
@@ -126,5 +145,6 @@ function formatTime(s) {
     return `${h}:${m}:${sec}`;
 }
 
-// 启动主题管理
+// 初始化所有管理器
 ThemeManager.init();
+TabManager.init();

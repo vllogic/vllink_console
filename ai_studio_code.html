@@ -16,6 +16,8 @@
         .dark .glass { background: rgba(15, 23, 42, 0.6); }
         .card-active { border: 2px solid #00d4ff !important; box-shadow: 0 0 20px rgba(0, 212, 255, 0.3); opacity: 1 !important; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        .tab-active { border-bottom: 2px solid #00d4ff; color: #00d4ff; font-weight: 900; }
+        .hidden { display: none; }
     </style>
 </head>
 <body class="bg-slate-50 dark:bg-darkBg text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-500 overflow-hidden">
@@ -23,7 +25,7 @@
     <header class="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 sticky top-0 z-50 glass">
         <div class="flex items-center gap-3">
             <div class="w-2.5 h-2.5 bg-primary rounded-full animate-pulse shadow-[0_0_10px_#00d4ff]"></div>
-            <h1 class="font-bold tracking-tighter text-xl italic text-slate-800 dark:text-slate-100">VLLINK <span class="text-primary font-black">CONSOLE</span></h1>
+            <h1 class="font-bold tracking-tighter text-xl italic">VLLINK <span class="text-primary font-black">CONSOLE</span></h1>
         </div>
 
         <!-- 三模态切换 -->
@@ -54,15 +56,16 @@
 
         <!-- 右侧功能区 (75%) -->
         <section class="w-3/4 p-8 overflow-y-auto">
-            <div class="flex gap-8 border-b border-slate-200 dark:border-slate-800 mb-8">
-                <button class="pb-4 border-b-2 border-primary font-bold text-sm tracking-wide">调试器配置</button>
-                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">数据分析 (待定)</button>
-                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">固件更新 (待定)</button>
+            <!-- 两个选项卡 -->
+            <div class="flex gap-10 border-b border-slate-200 dark:border-slate-800 mb-8">
+                <button id="tab-btn-config" class="pb-4 text-sm tracking-widest transition-all tab-active">配置</button>
+                <button id="tab-btn-tbd" class="pb-4 text-sm tracking-widest transition-all text-slate-400">待定</button>
             </div>
 
-            <div class="grid grid-cols-2 gap-8">
+            <!-- 选项卡内容 1: 配置 -->
+            <div id="tab-content-config" class="grid grid-cols-2 gap-8">
                 <!-- 有线配置展示 -->
-                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8 relative overflow-hidden group">
+                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8">
                     <h3 class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-6">Local Debugger Status</h3>
                     <div class="space-y-6">
                         <div>
@@ -78,9 +81,17 @@
 
                 <!-- 选定调试器展示 -->
                 <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8 flex flex-col justify-center items-center">
-                    <div id="targetIcon" class="w-16 h-16 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4 transition-transform duration-500">📡</div>
+                    <div id="targetIcon" class="w-16 h-16 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4">📡</div>
                     <h3 class="text-lg font-bold mb-2">当前选定调试器</h3>
                     <p id="selectedTitle" class="text-primary font-mono text-sm uppercase tracking-widest font-black">None Selected</p>
+                </div>
+            </div>
+
+            <!-- 选项卡内容 2: 待定 -->
+            <div id="tab-content-tbd" class="hidden">
+                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-20 flex flex-col items-center justify-center italic text-slate-500">
+                    <span class="text-4xl mb-4">🚧</span>
+                    功能开发中，敬请期待...
                 </div>
             </div>
         </section>
