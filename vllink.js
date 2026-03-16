@@ -11,14 +11,10 @@ class VllinkManager {
     async connect() {
         this.device = await navigator.usb.requestDevice({ filters: this.filters });
         await this.device.open();
-        
         const iface = this.device.configuration.interfaces.find(i => 
-            i.alternate.interfaceClass === 0xFF && 
-            i.alternate.interfaceSubclass === 0x03
+            i.alternate.interfaceClass === 0xFF && i.alternate.interfaceSubclass === 0x03
         );
-
-        if (!iface) throw new Error("接口不匹配 (Class 0xFF, Subclass 0x03)");
-        
+        if (!iface) throw new Error("WebUSB Interface not found");
         this.interfaceNum = iface.interfaceNumber;
         await this.device.claimInterface(this.interfaceNum);
         return this.device;
@@ -52,20 +48,21 @@ class VllinkManager {
             remote: []
         };
 
+        // 核心解析函数 (基于新结构：us[8], delay_us[4], reserved[4], alias[32] = 48 bytes)
         const parseNode = (offset) => ({
             us: view.getBigUint64(offset, true),
             delay_us: view.getUint32(offset + 8, true),
-            alias: decoder.decode(new Uint8Array(buffer, offset + 12, 32)).replace(/\0/g, '')
+            alias: decoder.decode(new Uint8Array(buffer, offset + 16, 32)).replace(/\0/g, '')
         });
 
-        // Local 结构体偏移 28
-        info.local = parseNode(28);
+        // 头部 32 字节后，第一个是 local
+        info.local = parseNode(32);
 
-        // Remote 结构体偏移 28 + 44
-        for (let i = 0; i < 10; i++) {
-            const offset = 28 + 44 + (i * 44);
+        // 后面跟着 9 个 remote 节点
+        for (let i = 0; i < 9; i++) {
+            const offset = 32 + 48 + (i * 48);
             const node = parseNode(offset);
-            if (node.us > 0n) { // 若 us 为 0 则表示未连接
+            if (node.us > 0n) { // 如果 us 为 0 表示该通道未连接
                 info.remote.push({ ...node, id: i + 1 });
             }
         }

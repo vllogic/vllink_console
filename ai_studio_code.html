@@ -3,40 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vllink WebUSB 控制台</title>
+    <title>Vllink WebUSB Console</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: { primary: '#00d4ff', darkBg: '#0b1120' }
-                }
-            }
+            theme: { extend: { colors: { primary: '#00d4ff', darkBg: '#0b1120' } } }
         }
     </script>
     <style>
         .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); }
         .dark .glass { background: rgba(15, 23, 42, 0.6); }
-        .card-active { border: 2px solid #00d4ff !important; box-shadow: 0 0 20px rgba(0, 212, 255, 0.2); opacity: 1 !important; }
+        .card-active { border: 2px solid #00d4ff !important; box-shadow: 0 0 20px rgba(0, 212, 255, 0.3); opacity: 1 !important; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body class="bg-slate-50 dark:bg-darkBg text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-500 overflow-hidden">
-    
     <!-- 顶部栏 -->
     <header class="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 sticky top-0 z-50 glass">
         <div class="flex items-center gap-3">
             <div class="w-2.5 h-2.5 bg-primary rounded-full animate-pulse shadow-[0_0_10px_#00d4ff]"></div>
-            <h1 class="font-bold tracking-tighter text-xl italic">Vllink <span class="text-primary">Wireless Debugger</span></h1>
+            <h1 class="font-bold tracking-tighter text-xl italic">VLLINK <span class="text-primary">CONSOLE</span></h1>
         </div>
 
-        <!-- 三模态切换栏 -->
+        <!-- 三模态切换 -->
         <div class="flex items-center bg-slate-200 dark:bg-slate-800 rounded-full p-1 border border-slate-300 dark:border-slate-700 w-48 relative">
             <button data-theme="dark" class="flex-1 py-1 rounded-full text-[10px] font-bold z-10 transition-colors">深色</button>
-            <button data-theme="auto" class="flex-1 py-1 rounded-full text-[10px] font-bold z-10 transition-colors text-white">AUTO</button>
+            <button data-theme="auto" class="flex-1 py-1 rounded-full text-[10px] font-bold z-10 transition-colors">AUTO</button>
             <button data-theme="light" class="flex-1 py-1 rounded-full text-[10px] font-bold z-10 transition-colors">浅色</button>
-            <!-- 滑块背景 -->
             <div id="themeSlider" class="absolute h-7 w-[31%] bg-primary rounded-full transition-all duration-300 shadow-lg"></div>
         </div>
 
@@ -47,13 +41,12 @@
         <!-- 左侧面板 (25%) -->
         <aside class="w-1/4 border-r border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-6 overflow-y-auto no-scrollbar">
             <button id="connectBtn" class="w-full py-4 bg-primary text-white rounded-2xl font-black text-sm hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/20">
-                SELECT DEVICE
+                CONNECT DEVICE
             </button>
 
             <div class="space-y-4">
-                <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Debuggers List</h2>
+                <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Debugger List</h2>
                 <div id="deviceList" class="space-y-3">
-                    <!-- 动态卡片 -->
                     <div class="text-center py-10 text-slate-500 text-xs italic">等待设备连接...</div>
                 </div>
             </div>
@@ -61,44 +54,33 @@
 
         <!-- 右侧功能区 (75%) -->
         <section class="w-3/4 p-8 overflow-y-auto">
-            <!-- 导航标签 -->
             <div class="flex gap-8 border-b border-slate-200 dark:border-slate-800 mb-8">
                 <button class="pb-4 border-b-2 border-primary font-bold text-sm tracking-wide">调试器配置</button>
-                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">数据分析 (待定)</button>
-                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">固件更新 (待定)</button>
+                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">选项页1</button>
+                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">选项页2</button>
             </div>
 
             <div class="grid grid-cols-2 gap-8">
-                <!-- 左半部：有线配置 -->
-                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8 relative overflow-hidden group">
-                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <svg width="60" height="60" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/></svg>
-                    </div>
-                    <h3 class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-6">Local Wired Debugger</h3>
+                <!-- 有线配置展示 -->
+                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8">
+                    <h3 class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-6">Local Debugger Status</h3>
                     <div class="space-y-6">
                         <div>
-                            <label class="text-[10px] text-slate-500 block mb-1">ALIAS / 名称</label>
+                            <label class="text-[10px] text-slate-500 block mb-1">ALIAS / 别名</label>
                             <p id="localAlias" class="text-xl font-mono">-</p>
                         </div>
                         <div>
-                            <label class="text-[10px] text-slate-500 block mb-1">DAP DELAY / 响应延迟</label>
+                            <label class="text-[10px] text-slate-500 block mb-1">RESPONSE DELAY</label>
                             <p class="text-xl font-mono"><span id="localDelay" class="text-primary">0</span> <span class="text-xs text-slate-500">us</span></p>
                         </div>
                     </div>
                 </div>
 
-                <!-- 右半部：功能扩展 -->
+                <!-- 选定调试器展示 -->
                 <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8 flex flex-col justify-center items-center">
-                    <div id="targetIcon" class="w-16 h-16 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4 transition-all">
-                        📡
-                    </div>
-                    <h3 class="text-lg font-bold mb-2 tracking-tight">选定调试器功能</h3>
-                    <p id="selectedTitle" class="text-primary font-mono text-sm mb-6 uppercase tracking-widest">None Selected</p>
-                    <div class="w-full h-px bg-slate-200 dark:border-slate-800 mb-6"></div>
-                    <p class="text-[10px] text-slate-500 text-center leading-relaxed">
-                        当前已通过 WebUSB 端点 0 建立通讯通道。<br>
-                        支持实时切换无线节点并监控其运行状态。
-                    </p>
+                    <div id="targetIcon" class="w-16 h-16 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4">📡</div>
+                    <h3 class="text-lg font-bold mb-2">当前选定</h3>
+                    <p id="selectedTitle" class="text-primary font-mono text-sm uppercase tracking-widest">None Selected</p>
                 </div>
             </div>
         </section>

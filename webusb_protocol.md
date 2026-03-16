@@ -40,14 +40,15 @@
 * 获取调试器及其已连接的无线调试器信息，数据结构如下：
     ```
     struct {
-        uint8_t select_idx;
-        uint8_t reserved[27];
+        uint8_t select_idx;     // 0: local; [1, 10]: remote client
+        uint8_t reserved[31];
 
         struct {
             uint64_t us;
             uint32_t delay_us;
+            uint32_t reserved;
             uint8_t alias[32];
-        } local, remote[10];
+        } local, remote[9];
     } __attribute__((packed)) debugger_info;
     ```
 * `debugger_info.select_idx`表示选定的调试器
