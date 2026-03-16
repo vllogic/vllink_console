@@ -25,10 +25,10 @@
     <header class="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 sticky top-0 z-50 glass">
         <div class="flex items-center gap-3">
             <div class="w-2.5 h-2.5 bg-primary rounded-full animate-pulse shadow-[0_0_10px_#00d4ff]"></div>
-            <h1 class="font-bold tracking-tighter text-xl italic">VLLINK <span class="text-primary font-black">CONSOLE</span></h1>
+            <h1 class="font-bold tracking-tighter text-xl italic text-slate-800 dark:text-slate-100">VLLINK <span class="text-primary font-black">CONSOLE</span></h1>
         </div>
 
-        <!-- 三模态切换 -->
+        <!-- 三模态主题切换 -->
         <div class="flex items-center bg-slate-200 dark:bg-slate-800 rounded-full p-1 border border-slate-300 dark:border-slate-700 w-48 relative">
             <button data-theme="dark" class="flex-1 py-1 rounded-full text-[10px] font-bold z-10 transition-colors">深色</button>
             <button data-theme="auto" class="flex-1 py-1 rounded-full text-[10px] font-bold z-10 transition-colors">AUTO</button>
@@ -40,7 +40,7 @@
     </header>
 
     <main class="flex h-[calc(100vh-4rem)]">
-        <!-- 左侧面板 (25%) -->
+        <!-- 左侧面板 (25%): 负责设备连接与列表显示 -->
         <aside class="w-1/4 border-r border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-6 overflow-y-auto no-scrollbar">
             <button id="connectBtn" class="w-full py-4 bg-primary text-white rounded-2xl font-black text-sm hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/20">
                 CONNECT DEVICE
@@ -56,34 +56,17 @@
 
         <!-- 右侧功能区 (75%) -->
         <section class="w-3/4 p-8 overflow-y-auto">
-            <!-- 两个选项卡 -->
+            <!-- 两个选项卡导航 -->
             <div class="flex gap-10 border-b border-slate-200 dark:border-slate-800 mb-8">
                 <button id="tab-btn-config" class="pb-4 text-sm tracking-widest transition-all tab-active">配置</button>
                 <button id="tab-btn-tbd" class="pb-4 text-sm tracking-widest transition-all text-slate-400">待定</button>
             </div>
 
-            <!-- 选项卡内容 1: 配置 -->
-            <div id="tab-content-config" class="grid grid-cols-2 gap-8">
-                <!-- 有线配置展示 -->
-                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8">
-                    <h3 class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-6">Local Debugger Status</h3>
-                    <div class="space-y-6">
-                        <div>
-                            <label class="text-[10px] text-slate-500 block mb-1">ALIAS / 别名</label>
-                            <p id="localAlias" class="text-xl font-mono text-slate-800 dark:text-slate-100">-</p>
-                        </div>
-                        <div>
-                            <label class="text-[10px] text-slate-500 block mb-1">DAP DELAY / 响应延迟</label>
-                            <p class="text-xl font-mono"><span id="localDelay" class="text-primary font-black">0</span> <span class="text-xs text-slate-500">us</span></p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 选定调试器展示 -->
-                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8 flex flex-col justify-center items-center">
-                    <div id="targetIcon" class="w-16 h-16 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4">📡</div>
-                    <h3 class="text-lg font-bold mb-2">当前选定调试器</h3>
-                    <p id="selectedTitle" class="text-primary font-mono text-sm uppercase tracking-widest font-black">None Selected</p>
+            <!-- 选项卡内容 1: 配置 (已移除旧卡片，后续指定) -->
+            <div id="tab-content-config">
+                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-20 flex flex-col items-center justify-center italic text-slate-500">
+                    <span class="text-4xl mb-4">⚙️</span>
+                    配置功能内容待指定...
                 </div>
             </div>
 
@@ -91,7 +74,7 @@
             <div id="tab-content-tbd" class="hidden">
                 <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-20 flex flex-col items-center justify-center italic text-slate-500">
                     <span class="text-4xl mb-4">🚧</span>
-                    功能开发中，敬请期待...
+                    功能开发中...
                 </div>
             </div>
         </section>

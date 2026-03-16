@@ -1,5 +1,5 @@
 /**
- * 三模态主题管理器
+ * 三模态主题管理器 (Dark | AUTO | Light)
  */
 const ThemeManager = {
     btns: document.querySelectorAll('[data-theme]'),
@@ -9,6 +9,7 @@ const ThemeManager = {
         const saved = localStorage.getItem('vllink-theme-preference') || 'auto';
         this.apply(saved);
         this.btns.forEach(btn => btn.addEventListener('click', () => this.apply(btn.dataset.theme)));
+        
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
             if (localStorage.getItem('vllink-theme-preference') === 'auto') this.apply('auto');
         });
@@ -17,6 +18,7 @@ const ThemeManager = {
     apply(mode) {
         localStorage.setItem('vllink-theme-preference', mode);
         const isDark = mode === 'auto' ? window.matchMedia('(prefers-color-scheme: dark)').matches : mode === 'dark';
+        
         document.documentElement.classList.toggle('dark', isDark);
 
         const activeIdx = Array.from(this.btns).findIndex(b => b.dataset.theme === mode);
@@ -31,7 +33,7 @@ const ThemeManager = {
 };
 
 /**
- * 选项页切换逻辑
+ * 选项页切换管理器
  */
 const TabManager = {
     btns: {
@@ -72,11 +74,7 @@ let pollTimer = null;
 const UI = {
     connectBtn: document.getElementById('connectBtn'),
     deviceList: document.getElementById('deviceList'),
-    localAlias: document.getElementById('localAlias'),
-    localDelay: document.getElementById('localDelay'),
-    selectedTitle: document.getElementById('selectedTitle'),
-    status: document.getElementById('connectionStatus'),
-    targetIcon: document.getElementById('targetIcon')
+    status: document.getElementById('connectionStatus')
 };
 
 UI.connectBtn.addEventListener('click', async () => {
@@ -90,7 +88,7 @@ UI.connectBtn.addEventListener('click', async () => {
         pollTimer = setInterval(async () => {
             try {
                 const info = await vllink.queryInfo();
-                updateDashboard(info);
+                updateDeviceList(info);
             } catch (e) {
                 clearInterval(pollTimer);
                 UI.status.innerText = "OFFLINE";
@@ -99,27 +97,22 @@ UI.connectBtn.addEventListener('click', async () => {
             }
         }, 250);
     } catch (e) {
+        console.error(e);
         alert("Connection Failed: " + e.message);
     }
 });
 
-function updateDashboard(info) {
-    UI.localAlias.innerText = info.local.alias;
-    UI.localDelay.innerText = info.local.delay_us;
-
+function updateDeviceList(info) {
+    // 整合所有节点
     const all = [{ ...info.local, id: 0, type: 'USB' }];
     info.remote.forEach(r => all.push({ ...r, type: 'WIFI' }));
 
     UI.deviceList.innerHTML = all.map(dev => {
         const isSelected = info.select_idx === dev.id;
         
+        // UPTIME 逻辑: Local 节点显示 raw us, Remote 节点显示 diff (local.us - remote.us)
         let duration = dev.id === 0 ? Number(info.local.us) / 1000000 : Number(info.local.us - dev.us) / 1000000;
         const timeStr = formatTime(duration);
-
-        if (isSelected) {
-            UI.selectedTitle.innerText = `${dev.type} : ${dev.alias}`;
-            UI.targetIcon.innerText = dev.type === 'USB' ? '🔌' : '📡';
-        }
 
         return `
             <div onclick="vllink.selectDebugger(${dev.id})" 
@@ -145,6 +138,6 @@ function formatTime(s) {
     return `${h}:${m}:${sec}`;
 }
 
-// 初始化所有管理器
+// 初始化管理器
 ThemeManager.init();
 TabManager.init();

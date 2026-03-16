@@ -48,6 +48,7 @@ class VllinkManager {
             remote: []
         };
 
+        // 每个节点 48 字节: us[8], delay_us[4], reserved[4], alias[32]
         const parseNode = (offset) => {
             const aliasRaw = new Uint8Array(buffer, offset + 16, 32);
             let aliasStr = decoder.decode(aliasRaw).replace(/\0/g, '').trim();
@@ -58,10 +59,10 @@ class VllinkManager {
             };
         };
 
-        // Header (32字节) + Local (48字节)
+        // Header (32字节) 后是 Local
         info.local = parseNode(32);
 
-        // 9个 Remote
+        // 后面是 9 个 Remote
         for (let i = 0; i < 9; i++) {
             const offset = 32 + 48 + (i * 48);
             const node = parseNode(offset);
