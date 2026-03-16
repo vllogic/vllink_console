@@ -12,13 +12,12 @@ class VllinkManager {
         this.device = await navigator.usb.requestDevice({ filters: this.filters });
         await this.device.open();
         
-        // 查找符合条件的接口
         const iface = this.device.configuration.interfaces.find(i => 
             i.alternate.interfaceClass === 0xFF && 
             i.alternate.interfaceSubclass === 0x03
         );
 
-        if (!iface) throw new Error("未找到 Vllink WebUSB 接口");
+        if (!iface) throw new Error("接口不匹配 (Class 0xFF, Subclass 0x03)");
         
         this.interfaceNum = iface.interfaceNumber;
         await this.device.claimInterface(this.interfaceNum);
@@ -26,13 +25,9 @@ class VllinkManager {
     }
 
     async queryInfo() {
-        // bRequest: 0x00, DIR_IN: 0x80 | 0x01 | 0x01 = 0x81 (Vendor, Interface, In)
         const result = await this.device.controlTransferIn({
-            requestType: 'vendor',
-            recipient: 'interface',
-            request: 0x00,
-            value: 0x00,
-            index: this.interfaceNum
+            requestType: 'vendor', recipient: 'interface',
+            request: 0x00, value: 0x00, index: this.interfaceNum
         }, 512);
 
         if (result.status === 'ok') {
@@ -41,13 +36,9 @@ class VllinkManager {
     }
 
     async selectDebugger(idx) {
-        // bRequest: 0x00, DIR_OUT: 0x41 (Vendor, Interface, Out)
         await this.device.controlTransferOut({
-            requestType: 'vendor',
-            recipient: 'interface',
-            request: 0x00,
-            value: idx & 0xFF, // wValue 结构：select_idx 在低字节
-            index: this.interfaceNum
+            requestType: 'vendor', recipient: 'interface',
+            request: 0x00, value: idx & 0xFF, index: this.interfaceNum
         });
     }
 
@@ -67,13 +58,14 @@ class VllinkManager {
             alias: decoder.decode(new Uint8Array(buffer, offset + 12, 32)).replace(/\0/g, '')
         });
 
-        // Local 结构体偏移量 28 (select_idx[1] + reserved[27])
+        // Local 结构体偏移 28
         info.local = parseNode(28);
 
-        // Remote 结构体数组，每个 44 字节 (8+4+32)
+        // Remote 结构体偏移 28 + 44
         for (let i = 0; i < 10; i++) {
-            const node = parseNode(28 + 44 + (i * 44));
-            if (node.us > 0n) {
+            const offset = 28 + 44 + (i * 44);
+            const node = parseNode(offset);
+            if (node.us > 0n) { // 若 us 为 0 则表示未连接
                 info.remote.push({ ...node, id: i + 1 });
             }
         }
