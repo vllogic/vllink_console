@@ -23,7 +23,7 @@
     <header class="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 sticky top-0 z-50 glass">
         <div class="flex items-center gap-3">
             <div class="w-2.5 h-2.5 bg-primary rounded-full animate-pulse shadow-[0_0_10px_#00d4ff]"></div>
-            <h1 class="font-bold tracking-tighter text-xl italic">VLLINK <span class="text-primary">CONSOLE</span></h1>
+            <h1 class="font-bold tracking-tighter text-xl italic text-slate-800 dark:text-slate-100">VLLINK <span class="text-primary font-black">CONSOLE</span></h1>
         </div>
 
         <!-- 三模态切换 -->
@@ -47,7 +47,7 @@
             <div class="space-y-4">
                 <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Debugger List</h2>
                 <div id="deviceList" class="space-y-3">
-                    <div class="text-center py-10 text-slate-500 text-xs italic">等待设备连接...</div>
+                    <div class="text-center py-10 text-slate-500 text-xs italic">Waiting for connection...</div>
                 </div>
             </div>
         </aside>
@@ -56,31 +56,31 @@
         <section class="w-3/4 p-8 overflow-y-auto">
             <div class="flex gap-8 border-b border-slate-200 dark:border-slate-800 mb-8">
                 <button class="pb-4 border-b-2 border-primary font-bold text-sm tracking-wide">调试器配置</button>
-                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">选项页1</button>
-                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">选项页2</button>
+                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">数据分析 (待定)</button>
+                <button class="pb-4 text-slate-400 font-bold text-sm hover:text-primary transition-colors cursor-not-allowed">固件更新 (待定)</button>
             </div>
 
             <div class="grid grid-cols-2 gap-8">
                 <!-- 有线配置展示 -->
-                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8">
+                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8 relative overflow-hidden group">
                     <h3 class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-6">Local Debugger Status</h3>
                     <div class="space-y-6">
                         <div>
                             <label class="text-[10px] text-slate-500 block mb-1">ALIAS / 别名</label>
-                            <p id="localAlias" class="text-xl font-mono">-</p>
+                            <p id="localAlias" class="text-xl font-mono text-slate-800 dark:text-slate-100">-</p>
                         </div>
                         <div>
-                            <label class="text-[10px] text-slate-500 block mb-1">RESPONSE DELAY</label>
-                            <p class="text-xl font-mono"><span id="localDelay" class="text-primary">0</span> <span class="text-xs text-slate-500">us</span></p>
+                            <label class="text-[10px] text-slate-500 block mb-1">DAP DELAY / 响应延迟</label>
+                            <p class="text-xl font-mono"><span id="localDelay" class="text-primary font-black">0</span> <span class="text-xs text-slate-500">us</span></p>
                         </div>
                     </div>
                 </div>
 
                 <!-- 选定调试器展示 -->
                 <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-8 flex flex-col justify-center items-center">
-                    <div id="targetIcon" class="w-16 h-16 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4">📡</div>
-                    <h3 class="text-lg font-bold mb-2">当前选定</h3>
-                    <p id="selectedTitle" class="text-primary font-mono text-sm uppercase tracking-widest">None Selected</p>
+                    <div id="targetIcon" class="w-16 h-16 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4 transition-transform duration-500">📡</div>
+                    <h3 class="text-lg font-bold mb-2">当前选定调试器</h3>
+                    <p id="selectedTitle" class="text-primary font-mono text-sm uppercase tracking-widest font-black">None Selected</p>
                 </div>
             </div>
         </section>

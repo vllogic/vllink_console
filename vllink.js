@@ -14,7 +14,7 @@ class VllinkManager {
         const iface = this.device.configuration.interfaces.find(i => 
             i.alternate.interfaceClass === 0xFF && i.alternate.interfaceSubclass === 0x03
         );
-        if (!iface) throw new Error("WebUSB Interface not found");
+        if (!iface) throw new Error("Vllink WebUSB Interface not found");
         this.interfaceNum = iface.interfaceNumber;
         await this.device.claimInterface(this.interfaceNum);
         return this.device;
@@ -48,21 +48,25 @@ class VllinkManager {
             remote: []
         };
 
-        // 核心解析函数 (基于新结构：us[8], delay_us[4], reserved[4], alias[32] = 48 bytes)
-        const parseNode = (offset) => ({
-            us: view.getBigUint64(offset, true),
-            delay_us: view.getUint32(offset + 8, true),
-            alias: decoder.decode(new Uint8Array(buffer, offset + 16, 32)).replace(/\0/g, '')
-        });
+        // 解析单个节点 (48字节): us[8], delay_us[4], reserved[4], alias[32]
+        const parseNode = (offset) => {
+            const aliasRaw = new Uint8Array(buffer, offset + 16, 32);
+            let aliasStr = decoder.decode(aliasRaw).replace(/\0/g, '').trim();
+            return {
+                us: view.getBigUint64(offset, true),
+                delay_us: view.getUint32(offset + 8, true),
+                alias: aliasStr || "Unnamed" // 如果为空则显示 Unnamed
+            };
+        };
 
-        // 头部 32 字节后，第一个是 local
+        // Header (32字节) 后是 Local
         info.local = parseNode(32);
 
-        // 后面跟着 9 个 remote 节点
+        // 后面是 9 个 Remote
         for (let i = 0; i < 9; i++) {
             const offset = 32 + 48 + (i * 48);
             const node = parseNode(offset);
-            if (node.us > 0n) { // 如果 us 为 0 表示该通道未连接
+            if (node.us > 0n) {
                 info.remote.push({ ...node, id: i + 1 });
             }
         }
