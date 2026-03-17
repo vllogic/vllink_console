@@ -14,9 +14,26 @@
     <style>
         .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); }
         .dark .glass { background: rgba(15, 23, 42, 0.6); }
-        .card-active { border: 2px solid #00d4ff !important; box-shadow: 0 0 20px rgba(0, 212, 255, 0.3); opacity: 1 !important; }
+
+        .device-card { 
+            background: rgba(0, 0, 0, 0.04);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            transition: all 0.2s ease;
+        }
+        .dark .device-card { 
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card-active { 
+            border: 2px solid #00d4ff !important; 
+            background: rgba(0, 212, 255, 0.12) !important;
+            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.15);
+            opacity: 1 !important; 
+        }
+        
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .tab-active { border-bottom: 2px solid #00d4ff; color: #00d4ff; font-weight: 900; }
+        .tab-active { border-bottom: 3px solid #00d4ff; color: #00d4ff; font-weight: 900; }
         .hidden { display: none; }
     </style>
 </head>
