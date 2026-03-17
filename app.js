@@ -1,5 +1,54 @@
-// ... ThemeManager, TabManager 逻辑保持不变 ...
+/**
+ * 三模态主题管理器 (保持不变)
+ */
+const ThemeManager = {
+    btns: document.querySelectorAll('[data-theme]'),
+    slider: document.getElementById('themeSlider'),
+    init() {
+        const saved = localStorage.getItem('vllink-theme-preference') || 'auto';
+        this.apply(saved);
+        this.btns.forEach(btn => btn.addEventListener('click', () => this.apply(btn.dataset.theme)));
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            if (localStorage.getItem('vllink-theme-preference') === 'auto') this.apply('auto');
+        });
+    },
+    apply(mode) {
+        localStorage.setItem('vllink-theme-preference', mode);
+        const isDark = mode === 'auto' ? window.matchMedia('(prefers-color-scheme: dark)').matches : mode === 'dark';
+        document.documentElement.classList.toggle('dark', isDark);
+        const activeIdx = Array.from(this.btns).findIndex(b => b.dataset.theme === mode);
+        this.slider.style.left = `calc(${activeIdx * 33.33}% + 4px)`;
+        this.btns.forEach(btn => {
+            const isActive = btn.dataset.theme === mode;
+            btn.classList.toggle('text-white', isActive);
+            btn.classList.toggle('text-slate-500', !isActive);
+        });
+    }
+};
 
+/**
+ * 选项页切换 (保持不变)
+ */
+const TabManager = {
+    btns: { config: document.getElementById('tab-btn-config'), tbd: document.getElementById('tab-btn-tbd') },
+    contents: { config: document.getElementById('tab-content-config'), tbd: document.getElementById('tab-content-tbd') },
+    init() {
+        this.btns.config.addEventListener('click', () => this.switch('config'));
+        this.btns.tbd.addEventListener('click', () => this.switch('tbd'));
+    },
+    switch(target) {
+        Object.keys(this.btns).forEach(key => {
+            const active = key === target;
+            this.btns[key].classList.toggle('tab-active', active);
+            this.btns[key].classList.toggle('text-slate-400', !active);
+            this.contents[key].classList.toggle('hidden', !active);
+        });
+    }
+};
+
+/**
+ * 核心业务逻辑
+ */
 const vllink = new VllinkManager();
 let pollTimer = null;
 let lastDeviceFingerprint = "";
