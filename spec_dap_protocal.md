@@ -24,6 +24,39 @@
     };
     ```
     ```
+    // request_handler_config_only 是usb层调用的，注意此函数会执行req_ptr++与resp_ptr++动作
+    static uint16_t request_handler_config_only(dap_param_t* param, uint8_t* request,
+            uint8_t* response, uint16_t pkt_size)
+    {
+        uint8_t cmd_id, cmd_num;
+        uint32_t req_ptr, resp_ptr;
+
+        req_ptr = 0;
+        resp_ptr = 0;
+        cmd_num = 1;
+
+        do {
+            cmd_num--;
+            cmd_id = request[req_ptr++];
+            response[resp_ptr++] = cmd_id;
+
+            if ((cmd_id >= ID_DAP_Vendor17) && (cmd_id <= ID_DAP_Vendor17)) {       // ID_DAP_Vendor17 -> VENDOR_ID_VLLINK_CONFIG
+                uint32_t ret = dap_vendor_request_handler(param, request + req_ptr, response + resp_ptr, cmd_id, pkt_size - resp_ptr);
+                if (ret == 0)
+                    goto fault;
+                else {
+                    req_ptr += ret & 0xffff;
+                    resp_ptr += ret >> 16;
+                }
+            }
+        } while (cmd_num && (resp_ptr < pkt_size));
+        goto exit;
+
+    fault:
+        response[resp_ptr - 1] = ID_DAP_Invalid;
+    exit:
+        return resp_ptr;
+    }
     // 注意，cmd_id 即 request[0]
     uint32_t dap_vendor_request_handler(dap_param_t* param, uint8_t* request,
             uint8_t* response, uint8_t cmd_id, uint16_t remaining_size)
