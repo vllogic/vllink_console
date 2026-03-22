@@ -1,13 +1,16 @@
+/**
+ * Vllink 硬件通讯管理类
+ * 适配固件版本 >= V00.40
+ */
 class VllinkManager {
     constructor() {
         this.device = null;
         this.interfaceNum = 0;
         this.filters = [{ vendorId: 0x1209, productId: 0x6666 }, { vendorId: 0x0d28, productId: 0x0204 }];
-        this.isBusy = false; // 通讯锁
+        this.isBusy = false; // 通讯排队锁
     }
 
-    // ... 保留原来的 connect, queryInfo, selectDebugger ...
-    async connect() { /* 同前 */
+    async connect() {
         this.device = await navigator.usb.requestDevice({ filters: this.filters });
         await this.device.open();
         const iface = this.device.configuration.interfaces.find(i => 
@@ -20,7 +23,7 @@ class VllinkManager {
     }
 
     async queryInfo() {
-        if (this.isBusy) return null;
+        if (!this.device || this.isBusy) return null;
         const result = await this.device.controlTransferIn({
             requestType: 'vendor', recipient: 'interface',
             request: 0x00, value: 0x00, index: this.interfaceNum
@@ -29,6 +32,7 @@ class VllinkManager {
     }
 
     async selectDebugger(idx) {
+        if (!this.device) return;
         await this.device.controlTransferOut({
             requestType: 'vendor', recipient: 'interface',
             request: 0x00, value: idx & 0xFF, index: this.interfaceNum
@@ -36,27 +40,31 @@ class VllinkManager {
     }
 
     /**
-     * DAP 核心传输 (请求-查询-应答)
+     * WebUSB 专用 DAP 通讯：请求 -> 查询 -> 应答
+     * 注意：pkg 首字节必须是 0x91 (VENDOR_ID_VLLINK_CONFIG)
      */
     async dapExecute(payload) {
-        // 1. 发送请求 (Request: 0x10)
+        if (!this.device) throw new Error("Device disconnected");
+        
+        // 1. 发送请求 (0x10)
         await this.device.controlTransferOut({
             requestType: 'vendor', recipient: 'interface',
             request: 0x10, value: 0, index: this.interfaceNum
         }, payload);
 
-        // 2. 轮询结果 (Poll: 0x11)
+        // 2. 循环查询结果 (0x11)
         let ready = false;
-        while (!ready) {
-            await new Promise(r => setTimeout(r, 2)); // 推荐 2ms 间隔
+        for (let i = 0; i < 100; i++) {
+            await new Promise(r => setTimeout(r, 2)); 
             const res = await this.device.controlTransferIn({
                 requestType: 'vendor', recipient: 'interface',
                 request: 0x11, value: 0, index: this.interfaceNum
             }, 2);
-            if (res.data.getInt16(0, true) > 0) ready = true;
+            if (res.data.getInt16(0, true) > 0) { ready = true; break; }
         }
+        if (!ready) throw new Error("DAP Communication Timeout");
 
-        // 3. 获取应答 (Response: 0x10)
+        // 3. 提取应答 (0x10)
         const resp = await this.device.controlTransferIn({
             requestType: 'vendor', recipient: 'interface',
             request: 0x10, value: 0, index: this.interfaceNum
@@ -64,56 +72,48 @@ class VllinkManager {
         return new Uint8Array(resp.data.buffer);
     }
 
-    /**
-     * 重启选定的设备
-     */
-    async resetDevice() {
-        const pkg = new Uint8Array([0x91, 0x02]); // ID_DAP_Vendor17, VLLINK_CONFIG_SUBCMD_RESET
-        return await this.dapExecute(pkg);
-    }
-
-    /**
-     * 获取配置信息 (Version, Size)
-     */
     async getConfigInfo() {
-        const pkg = new Uint8Array([0x91, 0x01]); // VLLINK_CONFIG_SUBCMD_GET_INFO
+        const pkg = new Uint8Array([0x91, 0x01]); // 0x91 + GET_INFO
         const resp = await this.dapExecute(pkg);
         const view = new DataView(resp.buffer);
-        // resp[0]=subcmd, resp[1]=DAP_OK, resp[2]=VLLINK_RESP_OK
+        // resp: [0x91, subcmd, DAP_OK, VLLINK_RESP, data...]
+        if (resp[2] !== 0 || resp[3] !== 0) throw new Error("Get Info Failed");
         return {
-            version: view.getUint32(3, true).toString(16),
-            size: view.getUint32(7, true),
-            fileLimit: view.getUint32(11, true)
+            version: view.getUint32(4, true).toString(16),
+            size: view.getUint32(8, true),      // config_size (4096)
+            fileLimit: view.getUint32(12, true) // data_file_limit
         };
     }
 
-    /**
-     * 读取完整配置文本
-     */
-    async readConfig(fullSize) {
+    async resetDevice() {
+        const pkg = new Uint8Array([0x91, 0x02]); // 0x91 + RESET
+        const resp = await this.dapExecute(pkg);
+        return resp[2] === 0 && resp[3] === 0;
+    }
+
+    async readConfig(totalSize) {
         let offset = 0;
         let completeData = new Uint8Array(0);
         const decoder = new TextDecoder();
 
-        while (offset < fullSize) {
-            const len = Math.min(256, fullSize - offset); // 安全起见每片256
-            const pkg = new Uint8Array(18);
-            pkg[0] = 0x91; pkg[1] = 0x10; // CONFIG_READ
+        while (offset < totalSize) {
+            const len = Math.min(256, totalSize - offset); 
+            const pkg = new Uint8Array(18); // 0x91 + subcmd(1) + head(16)
+            pkg[0] = 0x91; pkg[1] = 0x10; 
             const view = new DataView(pkg.buffer);
-            view.setUint32(2, 0, true);        // idx
-            view.setUint32(6, fullSize, true); // full_len
-            view.setUint32(10, offset, true);  // data_pos
-            view.setUint32(14, len, true);     // data_len
+            view.setUint32(2, 0, true);
+            view.setUint32(6, totalSize, true);
+            view.setUint32(10, offset, true);
+            view.setUint32(14, len, true);
 
             const resp = await this.dapExecute(pkg);
-            if (resp[2] !== 0) break; // VLLINK_CONFIG_SUBCMD_RESP_OK
+            if (resp[2] !== 0 || resp[3] !== 0) break;
             
-            const chunkLen = new DataView(resp.buffer).getUint32(3, true);
-            const chunkData = resp.slice(7, 7 + chunkLen);
+            const chunkLen = new DataView(resp.buffer).getUint32(4, true);
+            const chunkData = resp.slice(8, 8 + chunkLen);
             
             const tmp = new Uint8Array(completeData.length + chunkData.length);
-            tmp.set(completeData);
-            tmp.set(chunkData, completeData.length);
+            tmp.set(completeData); tmp.set(chunkData, completeData.length);
             completeData = tmp;
             offset += chunkLen;
             if (chunkLen === 0) break;
@@ -121,27 +121,28 @@ class VllinkManager {
         return decoder.decode(completeData).replace(/\0/g, '');
     }
 
-    /**
-     * 写入配置文本
-     */
-    async writeConfig(text, fullSize) {
+    async writeConfig(text, totalSize) {
         const encoder = new TextEncoder();
-        const data = encoder.encode(text);
-        let offset = 0;
+        const rawBytes = encoder.encode(text);
+        
+        // 强制构建 totalSize 长度的 Buffer (全量写入)
+        const fullPayload = new Uint8Array(totalSize);
+        fullPayload.set(rawBytes.slice(0, totalSize));
 
-        while (offset < data.length) {
-            const len = Math.min(256, data.length - offset);
+        let offset = 0;
+        while (offset < totalSize) {
+            const len = Math.min(256, totalSize - offset);
             const pkg = new Uint8Array(18 + len);
-            pkg[0] = 0x91; pkg[1] = 0x20; // CONFIG_WRITE
+            pkg[0] = 0x91; pkg[1] = 0x20; 
             const view = new DataView(pkg.buffer);
             view.setUint32(2, 0, true);
-            view.setUint32(6, fullSize, true);
+            view.setUint32(6, totalSize, true);
             view.setUint32(10, offset, true);
             view.setUint32(14, len, true);
-            pkg.set(data.slice(offset, offset + len), 18);
+            pkg.set(fullPayload.slice(offset, offset + len), 18);
 
             const resp = await this.dapExecute(pkg);
-            if (resp[2] !== 0) throw new Error("Write Failed");
+            if (resp[2] !== 0 || resp[3] !== 0) throw new Error("Flash Write Error");
             offset += len;
         }
     }
