@@ -35,6 +35,9 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .tab-active { border-bottom: 3px solid #00d4ff; color: #00d4ff; font-weight: 900; }
         .hidden { display: none; }
+
+        .pointer-events-none { pointer-events: none !important; cursor: wait; }
+        .editor-line { transition: background-color 0.3s ease; }
     </style>
 </head>
 <body class="bg-slate-50 dark:bg-darkBg text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-500 overflow-hidden">
@@ -79,11 +82,11 @@
                 <button id="tab-btn-tbd" class="pb-4 text-sm tracking-widest transition-all text-slate-400">待定</button>
             </div>
 
-            <!-- 选项卡内容 1: 配置 (已移除旧卡片，后续指定) -->
-            <div id="tab-content-config">
+            <!-- 选项卡内容 1: 配置 -->
+            <div id="tab-content-config" class="h-full overflow-y-auto pr-2 custom-editor-container">
                 <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-20 flex flex-col items-center justify-center italic text-slate-500">
                     <span class="text-4xl mb-4">⚙️</span>
-                    配置功能内容待指定...
+                    Select a debugger to load configuration...
                 </div>
             </div>
 
