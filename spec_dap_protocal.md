@@ -192,3 +192,4 @@
         return ((uint32_t)resp_ptr << 16) | req_ptr;
     }
     ```
+* 配置同步的补充说明：配置文本长度由`config_info.config_size`定义，读取需要完整读取此长度，写入也需要完整写入此长度，只有完整写入才能触发解析
