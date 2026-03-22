@@ -266,4 +266,20 @@ function updateDisplay(info) {
         if (!card) return;
         card.classList.toggle('card-active', info.select_idx === dev.id);
         const s = dev.id === 0 ? Number(info.local.us)/1e6 : Number(info.local.us - dev.us)/1e6;
-        card.querySelector('.uptime-val').innerText
+        card.querySelector('.uptime-val').innerText = formatTime(s);
+        card.querySelector('.delay-val').innerText = dev.delay_us > 0 ? `${dev.delay_us} us` : "-";
+    });
+}
+
+function formatTime(s) {
+    const t = Math.max(0, s);
+    const h = Math.floor(t / 3600).toString().padStart(2, '0');
+    const m = Math.floor((t % 3600) / 60).toString().padStart(2, '0');
+    const sec = Math.floor(t % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${sec}`;
+}
+
+// 全局初始化
+ThemeManager.init();
+TabManager.init();
+ConfigEditor.init();
