@@ -47,7 +47,8 @@
             uint64_t us;
             uint32_t delay_us;
             uint32_t reserved;
-            uint8_t alias[32];
+            uint8_t mac[6];
+            uint8_t alias[26];
         } local, remote[9];
     } __attribute__((packed)) debugger_info;
     ```
