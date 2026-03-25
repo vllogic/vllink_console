@@ -1,5 +1,5 @@
 /**
- * 三模态主题管理器 (Dark / Auto / Light)
+ * 三模态主题管理器
  */
 const ThemeManager = {
     btns: document.querySelectorAll('[data-theme]'),
@@ -47,12 +47,13 @@ const TabManager = {
 };
 
 /**
- * 配置编辑器：支持全选、行维护、快捷键同步与状态显示
+ * 配置编辑器：像 VS Code 一样隔离行号与内容
  */
 const ConfigEditor = {
     container: document.getElementById('tab-content-config'),
     editor: null,
-    originalLines: [], 
+    gutter: null,
+    originalText: "", 
     isBusy: false,
     lastSelectedIdx: -1,
 
@@ -60,21 +61,16 @@ const ConfigEditor = {
         this.container.addEventListener('mouseleave', () => this.sync());
     },
 
-    /**
-     * 更新状态条 UI
-     */
     updateStatus(type) {
         const dot = document.getElementById('editor-status-dot');
         const text = document.getElementById('editor-status-text');
         if (!dot || !text) return;
-
         const states = {
             synced: { color: 'bg-emerald-500', label: '已同步' },
             modified: { color: 'bg-amber-500', label: '未同步 (CTRL + Enter 保存)' },
             syncing: { color: 'bg-primary animate-pulse', label: '同步中...' },
             error: { color: 'bg-rose-500', label: '同步失败' }
         };
-
         const s = states[type];
         dot.className = `w-2 h-2 rounded-full transition-colors ${s.color}`;
         text.innerText = s.label;
@@ -84,7 +80,7 @@ const ConfigEditor = {
         if (this.isBusy) return;
         this.isBusy = true;
         this.lockUI(true);
-        manager.isBusy = true; // 独占通讯
+        manager.isBusy = true; 
 
         try {
             this.container.innerHTML = `<div class="p-20 text-center animate-pulse text-slate-500 italic">正在读取硬件配置...</div>`;
@@ -102,27 +98,15 @@ const ConfigEditor = {
     },
 
     render(text) {
-        const rows = text.replace(/\r/g, '')
-                         .split('\n')
-                         .filter(line => !line.trim().startsWith('Config_Password='));
+        // 过滤掉敏感行
+        const cleanText = text.replace(/\r/g, '')
+                              .split('\n')
+                              .filter(line => !line.trim().startsWith('Config_Password='))
+                              .join('\n');
         
-        this.originalLines = [...rows];
+        this.originalText = cleanText;
 
         this.container.innerHTML = `
-            <style>
-                #vllink-editor { counter-reset: line; outline: none; }
-                .line-row { display: flex; transition: background 0.3s; }
-                .line-row::before { 
-                    counter-increment: line; 
-                    content: counter(line); 
-                    width: 3rem; text-align: right; padding-right: 1rem;
-                    color: #94a3b8; user-select: none; flex-shrink: 0;
-                    border-right: 1px solid rgba(148, 163, 184, 0.2);
-                    margin-right: 1rem; background: rgba(248, 250, 252, 0.05);
-                }
-                .line-content { flex: 1; white-space: pre-wrap; word-break: break-all; min-height: 1.5rem; outline: none; }
-            </style>
-            
             <div class="flex items-center justify-between mb-3 px-1">
                 <div class="flex items-center gap-3">
                     <div id="editor-status-dot" class="w-2 h-2 rounded-full"></div>
@@ -133,28 +117,32 @@ const ConfigEditor = {
                 </div>
             </div>
 
-            <div id="vllink-editor" contenteditable="true" spellcheck="false" 
-                 class="flex flex-col font-mono text-sm bg-white dark:bg-slate-900/40 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl py-2">
-                ${rows.map((line, i) => `
-                    <div class="line-row" data-line="${i}">
-                        <div class="line-content">${line}</div>
-                    </div>
-                `).join('')}
+            <div class="relative flex font-mono text-sm bg-white dark:bg-slate-900/40 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl min-h-[200px]">
+                <!-- 左侧行号区 (不可编辑) -->
+                <div id="vllink-gutter" class="w-12 py-4 bg-slate-50 dark:bg-slate-800/30 text-right pr-3 text-slate-400 select-none border-r border-slate-200 dark:border-slate-800/50 leading-6">
+                </div>
+                <!-- 右侧编辑区 -->
+                <div id="vllink-editor" contenteditable="true" spellcheck="false" class="flex-1 py-4 px-4 outline-none text-slate-700 dark:text-slate-200 leading-6 overflow-x-auto whitespace-pre"></div>
             </div>`;
 
         this.editor = document.getElementById('vllink-editor');
+        this.gutter = document.getElementById('vllink-gutter');
 
-        this.editor.addEventListener('input', (e) => {
-            this.updateStatus('modified');
-            const lineRow = e.target.closest('.line-row');
-            if (lineRow) {
-                const idx = parseInt(lineRow.dataset.line);
-                const currentText = lineRow.querySelector('.line-content').innerText;
-                const isChanged = currentText !== this.originalLines[idx];
-                this.updateRowStyle(lineRow, isChanged ? 'dirty' : 'none');
-            }
+        this.editor.innerText = cleanText;
+        this.updateGutter();
+
+        // 监听滚动同步
+        this.editor.addEventListener('scroll', () => {
+            this.gutter.scrollTop = this.editor.scrollTop;
         });
 
+        // 监听输入
+        this.editor.addEventListener('input', () => {
+            this.updateGutter();
+            this.updateStatus(this.editor.innerText === this.originalText ? 'synced' : 'modified');
+        });
+
+        // 快捷键
         this.editor.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                 e.preventDefault();
@@ -162,6 +150,7 @@ const ConfigEditor = {
             }
         });
 
+        // 纯文本粘贴
         this.editor.addEventListener('paste', (e) => {
             e.preventDefault();
             const text = (e.originalEvent || e).clipboardData.getData('text/plain');
@@ -169,24 +158,20 @@ const ConfigEditor = {
         });
     },
 
-    updateRowStyle(el, status) {
-        el.classList.remove('bg-amber-500/10', 'bg-emerald-500/20', 'bg-rose-500/20');
-        if (status === 'dirty') el.classList.add('bg-amber-500/10');
-        else if (status === 'success') el.classList.add('bg-emerald-500/20');
-        else if (status === 'fail') el.classList.add('bg-rose-500/20');
+    updateGutter() {
+        const lines = this.editor.innerText.split('\n');
+        const lineCount = lines.length;
+        let gutterHTML = '';
+        for (let i = 1; i <= lineCount; i++) {
+            gutterHTML += `<div>${i}</div>`;
+        }
+        this.gutter.innerHTML = gutterHTML;
     },
 
     async sync() {
         if (!this.editor || this.isBusy) return;
-        
-        const rows = Array.from(this.editor.querySelectorAll('.line-row'));
-        const currentData = rows.map(r => r.querySelector('.line-content').innerText);
-        
-        const hasChange = currentData.some((text, i) => text !== this.originalLines[i]);
-        if (!hasChange) {
-            this.updateStatus('synced');
-            return;
-        }
+        const currentText = this.editor.innerText;
+        if (currentText === this.originalText) return;
 
         this.updateStatus('syncing');
         this.isBusy = true;
@@ -195,22 +180,17 @@ const ConfigEditor = {
 
         try {
             const info = await vllink.getConfigInfo();
-            const fullText = currentData.join('\n');
-            await vllink.writeConfig(fullText, info.size);
+            await vllink.writeConfig(currentText, info.size);
 
             const verifyText = await vllink.readConfig(info.size);
-            const verifyRows = verifyText.replace(/\r/g, '').split('\n')
-                                         .filter(line => !line.trim().startsWith('Config_Password='));
+            const cleanVerify = verifyText.replace(/\r/g, '')
+                                          .split('\n')
+                                          .filter(line => !line.trim().startsWith('Config_Password='))
+                                          .join('\n');
 
-            rows.forEach((row, i) => {
-                const newValue = (verifyRows[i] || "").trim();
-                const userTyped = currentData[i].trim();
-                if (userTyped !== this.originalLines[i]) {
-                    const ok = userTyped === newValue;
-                    this.updateRowStyle(row, ok ? 'success' : 'fail');
-                }
-                this.originalLines[i] = verifyRows[i] || "";
-            });
+            this.editor.innerText = cleanVerify;
+            this.originalText = cleanVerify;
+            this.updateGutter();
             this.updateStatus('synced');
         } catch (e) {
             this.updateStatus('error');
@@ -253,16 +233,12 @@ UI.connectBtn.addEventListener('click', async () => {
             try {
                 const info = await vllink.queryInfo();
                 if (!info) return;
-
                 updateDisplay(info);
-
                 if (info.select_idx !== ConfigEditor.lastSelectedIdx) {
                     ConfigEditor.lastSelectedIdx = info.select_idx;
                     ConfigEditor.load(vllink);
                 }
             } catch (e) {
-                console.error("Poll cycle error:", e);
-                // 只有在确定断开时才重置 UI
                 if (e.message.includes('disconnected') || e.message.includes('lost')) {
                     clearInterval(pollTimer);
                     UI.status.innerText = "OFFLINE";
@@ -295,7 +271,6 @@ UI.deviceList.addEventListener('click', async (e) => {
 function updateDisplay(info) {
     const all = [{ ...info.local, id: 0, type: 'USB' }];
     info.remote.forEach(r => all.push({ ...r, type: 'WIFI' }));
-
     const fingerprint = all.map(d => `${d.id}-${d.mac}`).join('|');
     if (fingerprint !== lastFingerprint) {
         UI.deviceList.innerHTML = all.map(dev => `
@@ -313,19 +288,12 @@ function updateDisplay(info) {
                     <span class="uppercase tracking-tighter">Addr</span><span class="text-slate-600 dark:text-slate-300">${dev.mac}</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 mt-1">
-                    <div class="flex flex-col">
-                        <span class="text-[9px] text-slate-400 uppercase font-black">Uptime</span>
-                        <span class="uptime-val font-mono text-sm font-bold text-slate-700 dark:text-slate-200">00:00:00</span>
-                    </div>
-                    <div class="flex flex-col items-end">
-                        <span class="text-[9px] text-slate-400 uppercase font-black">Latency</span>
-                        <span class="delay-val font-mono text-sm text-primary font-black">-</span>
-                    </div>
+                    <div class="flex flex-col"><span class="text-[9px] text-slate-400 uppercase font-black">Uptime</span><span class="uptime-val font-mono text-sm font-bold text-slate-700 dark:text-slate-200">00:00:00</span></div>
+                    <div class="flex flex-col items-end"><span class="text-[9px] text-slate-400 uppercase font-black">Latency</span><span class="delay-val font-mono text-sm text-primary font-black">-</span></div>
                 </div>
             </div>`).join('');
         lastFingerprint = fingerprint;
     }
-
     all.forEach(dev => {
         const card = UI.deviceList.querySelector(`[data-id="${dev.id}"]`);
         if (!card) return;
@@ -336,9 +304,6 @@ function updateDisplay(info) {
     });
 }
 
-/**
- * 修正后的 formatTime 函数，解决了 ts 未定义的问题
- */
 function formatTime(s) {
     const t = Math.max(0, s);
     const h = Math.floor(t / 3600).toString().padStart(2, '0');
