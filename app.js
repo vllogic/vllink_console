@@ -47,11 +47,12 @@ const TabManager = {
 };
 
 /**
- * 配置编辑器：负责行维护、全量写入校验与颜色渲染
+ * 配置编辑器：支持全选、行维护、快捷键同步与状态显示
  */
 const ConfigEditor = {
     container: document.getElementById('tab-content-config'),
-    lines: [], // 结构: { original, current, el, isDirty }
+    editor: null,
+    originalLines: [], 
     isBusy: false,
     lastSelectedIdx: -1,
 
@@ -59,19 +60,40 @@ const ConfigEditor = {
         this.container.addEventListener('mouseleave', () => this.sync());
     },
 
+    /**
+     * 更新状态条 UI
+     */
+    updateStatus(type) {
+        const dot = document.getElementById('editor-status-dot');
+        const text = document.getElementById('editor-status-text');
+        if (!dot || !text) return;
+
+        const states = {
+            synced: { color: 'bg-emerald-500', label: '已同步' },
+            modified: { color: 'bg-amber-500', label: '未同步 (CTRL + Enter 保存)' },
+            syncing: { color: 'bg-primary animate-pulse', label: '同步中...' },
+            error: { color: 'bg-rose-500', label: '同步失败' }
+        };
+
+        const s = states[type];
+        dot.className = `w-2 h-2 rounded-full transition-colors ${s.color}`;
+        text.innerText = s.label;
+    },
+
     async load(manager) {
         if (this.isBusy) return;
         this.isBusy = true;
         this.lockUI(true);
-        manager.isBusy = true; 
+        manager.isBusy = true; // 独占通讯
 
         try {
-            this.container.innerHTML = `<div class="p-20 text-center animate-pulse text-slate-500 italic">Reading configuration...</div>`;
+            this.container.innerHTML = `<div class="p-20 text-center animate-pulse text-slate-500 italic">正在读取硬件配置...</div>`;
             const info = await manager.getConfigInfo();
             const text = await manager.readConfig(info.size);
             this.render(text);
+            this.updateStatus('synced');
         } catch (e) {
-            this.container.innerHTML = `<div class="p-20 text-red-500 text-center font-bold">Load Failed: ${e.message}</div>`;
+            this.container.innerHTML = `<div class="p-20 text-red-500 text-center font-bold">读取失败: ${e.message}</div>`;
         } finally {
             this.isBusy = false;
             manager.isBusy = false;
@@ -80,79 +102,118 @@ const ConfigEditor = {
     },
 
     render(text) {
-        // 核心变更：移除回车符，分割行，并过滤掉敏感的 Config_Password 行
         const rows = text.replace(/\r/g, '')
                          .split('\n')
                          .filter(line => !line.trim().startsWith('Config_Password='));
+        
+        this.originalLines = [...rows];
 
         this.container.innerHTML = `
-            <div class="flex flex-col font-mono text-sm bg-white dark:bg-slate-900/40 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl">
+            <style>
+                #vllink-editor { counter-reset: line; outline: none; }
+                .line-row { display: flex; transition: background 0.3s; }
+                .line-row::before { 
+                    counter-increment: line; 
+                    content: counter(line); 
+                    width: 3rem; text-align: right; padding-right: 1rem;
+                    color: #94a3b8; user-select: none; flex-shrink: 0;
+                    border-right: 1px solid rgba(148, 163, 184, 0.2);
+                    margin-right: 1rem; background: rgba(248, 250, 252, 0.05);
+                }
+                .line-content { flex: 1; white-space: pre-wrap; word-break: break-all; min-height: 1.5rem; outline: none; }
+            </style>
+            
+            <div class="flex items-center justify-between mb-3 px-1">
+                <div class="flex items-center gap-3">
+                    <div id="editor-status-dot" class="w-2 h-2 rounded-full"></div>
+                    <span id="editor-status-text" class="text-[10px] font-black uppercase tracking-widest text-slate-400"></span>
+                </div>
+                <div class="text-[9px] text-slate-400 bg-slate-200/50 dark:bg-white/5 px-2 py-0.5 rounded border border-slate-300/30">
+                    <span class="font-bold">CTRL + ENTER</span> 立即同步
+                </div>
+            </div>
+
+            <div id="vllink-editor" contenteditable="true" spellcheck="false" 
+                 class="flex flex-col font-mono text-sm bg-white dark:bg-slate-900/40 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl py-2">
                 ${rows.map((line, i) => `
-                    <div class="editor-line flex items-center border-b border-slate-100 dark:border-slate-800/50 transition-colors">
-                        <span class="w-12 text-right pr-4 text-slate-400 select-none bg-slate-50 dark:bg-slate-800/30 py-2.5 border-r border-slate-100 dark:border-slate-800/50">${i+1}</span>
-                        <input type="text" class="flex-1 bg-transparent px-4 py-2.5 outline-none text-slate-700 dark:text-slate-200" 
-                               value="${line.replace(/"/g, '&quot;')}" data-idx="${i}">
+                    <div class="line-row" data-line="${i}">
+                        <div class="line-content">${line}</div>
                     </div>
                 `).join('')}
             </div>`;
 
-        const inputs = this.container.querySelectorAll('input');
-        this.lines = Array.from(inputs).map((el, i) => {
-            const rowData = { original: rows[i], current: rows[i], el: el, isDirty: false };
-            el.addEventListener('input', (e) => {
-                rowData.current = e.target.value;
-                rowData.isDirty = rowData.current !== rowData.original;
-                this.updateStyle(rowData);
-            });
-            el.addEventListener('blur', () => this.sync());
-            return rowData;
+        this.editor = document.getElementById('vllink-editor');
+
+        this.editor.addEventListener('input', (e) => {
+            this.updateStatus('modified');
+            const lineRow = e.target.closest('.line-row');
+            if (lineRow) {
+                const idx = parseInt(lineRow.dataset.line);
+                const currentText = lineRow.querySelector('.line-content').innerText;
+                const isChanged = currentText !== this.originalLines[idx];
+                this.updateRowStyle(lineRow, isChanged ? 'dirty' : 'none');
+            }
+        });
+
+        this.editor.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                this.sync();
+            }
+        });
+
+        this.editor.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.originalEvent || e).clipboardData.getData('text/plain');
+            document.execCommand("insertText", false, text);
         });
     },
 
-    updateStyle(line, status = 'none') {
-        const row = line.el.closest('.editor-line');
-        row.classList.remove('bg-amber-500/10', 'bg-emerald-500/20', 'bg-rose-500/20');
-        if (status === 'success') row.classList.add('bg-emerald-500/20');
-        else if (status === 'fail') row.classList.add('bg-rose-500/20');
-        else if (line.isDirty) row.classList.add('bg-amber-500/10');
+    updateRowStyle(el, status) {
+        el.classList.remove('bg-amber-500/10', 'bg-emerald-500/20', 'bg-rose-500/20');
+        if (status === 'dirty') el.classList.add('bg-amber-500/10');
+        else if (status === 'success') el.classList.add('bg-emerald-500/20');
+        else if (status === 'fail') el.classList.add('bg-rose-500/20');
     },
 
-    /**
-     * 同步逻辑：全量写入 -> 硬件重析 -> 回读校验
-     */
     async sync() {
-        if (this.lines.every(l => !l.isDirty) || this.isBusy) return;
+        if (!this.editor || this.isBusy) return;
+        
+        const rows = Array.from(this.editor.querySelectorAll('.line-row'));
+        const currentData = rows.map(r => r.querySelector('.line-content').innerText);
+        
+        const hasChange = currentData.some((text, i) => text !== this.originalLines[i]);
+        if (!hasChange) {
+            this.updateStatus('synced');
+            return;
+        }
+
+        this.updateStatus('syncing');
         this.isBusy = true;
         this.lockUI(true);
         vllink.isBusy = true;
 
         try {
             const info = await vllink.getConfigInfo();
-            // 注意：由于 render 时过滤了 Password 行，fullText 中也不会包含该行
-            const fullText = this.lines.map(l => l.current).join('\n');
-            
-            // 写入全量数据（vllink.js 会负责填充补齐 totalSize）
+            const fullText = currentData.join('\n');
             await vllink.writeConfig(fullText, info.size);
 
-            // 回读并清洗，同样需要过滤 Password 行以保持比对一致
             const verifyText = await vllink.readConfig(info.size);
-            const verifyRows = verifyText.replace(/\r/g, '')
-                                         .split('\n')
+            const verifyRows = verifyText.replace(/\r/g, '').split('\n')
                                          .filter(line => !line.trim().startsWith('Config_Password='));
 
-            this.lines.forEach((line, i) => {
-                const newValue = (verifyRows[i] || "");
-                if (line.isDirty) {
-                    const ok = line.current.trim() === newValue.trim();
-                    this.updateStyle(line, ok ? 'success' : 'fail');
+            rows.forEach((row, i) => {
+                const newValue = (verifyRows[i] || "").trim();
+                const userTyped = currentData[i].trim();
+                if (userTyped !== this.originalLines[i]) {
+                    const ok = userTyped === newValue;
+                    this.updateRowStyle(row, ok ? 'success' : 'fail');
                 }
-                
-                line.original = newValue;
-                line.current = newValue;
-                line.el.value = newValue;
-                line.isDirty = false;
+                this.originalLines[i] = verifyRows[i] || "";
             });
+            this.updateStatus('synced');
         } catch (e) {
+            this.updateStatus('error');
             console.error("Sync error:", e);
         } finally {
             this.isBusy = false;
@@ -180,24 +241,6 @@ const UI = {
     status: document.getElementById('connectionStatus')
 };
 
-UI.deviceList.addEventListener('click', async (e) => {
-    const restartBtn = e.target.closest('.restart-btn');
-    if (restartBtn) {
-        e.stopPropagation();
-        const card = restartBtn.closest('[data-id]');
-        if (confirm(`Restart Node ${card.dataset.id}?`)) {
-            try {
-                await vllink.resetDevice();
-                UI.status.innerText = "REBOOTING...";
-                setTimeout(() => location.reload(), 1200);
-            } catch (err) { alert("Reset Error: " + err.message); }
-        }
-        return;
-    }
-    const card = e.target.closest('[data-id]');
-    if (card) vllink.selectDebugger(parseInt(card.dataset.id));
-});
-
 UI.connectBtn.addEventListener('click', async () => {
     try {
         await vllink.connect();
@@ -218,13 +261,35 @@ UI.connectBtn.addEventListener('click', async () => {
                     ConfigEditor.load(vllink);
                 }
             } catch (e) {
-                clearInterval(pollTimer);
-                UI.status.innerText = "OFFLINE";
-                UI.connectBtn.innerText = "RECONNECT";
-                UI.connectBtn.classList.replace('bg-green-600', 'bg-primary');
+                console.error("Poll cycle error:", e);
+                // 只有在确定断开时才重置 UI
+                if (e.message.includes('disconnected') || e.message.includes('lost')) {
+                    clearInterval(pollTimer);
+                    UI.status.innerText = "OFFLINE";
+                    UI.connectBtn.innerText = "RECONNECT";
+                    UI.connectBtn.classList.replace('bg-green-600', 'bg-primary');
+                }
             }
         }, 250);
     } catch (e) { alert("Connect error: " + e.message); }
+});
+
+UI.deviceList.addEventListener('click', async (e) => {
+    const restartBtn = e.target.closest('.restart-btn');
+    if (restartBtn) {
+        e.stopPropagation();
+        const card = restartBtn.closest('[data-id]');
+        if (confirm(`确定重启节点 ${card.dataset.id}?`)) {
+            try {
+                await vllink.resetDevice();
+                UI.status.innerText = "REBOOTING...";
+                setTimeout(() => location.reload(), 1200);
+            } catch (err) { alert("Reset Error: " + err.message); }
+        }
+        return;
+    }
+    const card = e.target.closest('[data-id]');
+    if (card) vllink.selectDebugger(parseInt(card.dataset.id));
 });
 
 function updateDisplay(info) {
@@ -271,6 +336,9 @@ function updateDisplay(info) {
     });
 }
 
+/**
+ * 修正后的 formatTime 函数，解决了 ts 未定义的问题
+ */
 function formatTime(s) {
     const t = Math.max(0, s);
     const h = Math.floor(t / 3600).toString().padStart(2, '0');
