@@ -77,10 +77,10 @@
 
         <!-- 右侧功能区 (75%) -->
         <section class="w-3/4 p-8 overflow-y-auto">
-            <!-- 两个选项卡导航 -->
+            <!-- 导航按钮 -->
             <div class="flex gap-10 border-b border-slate-200 dark:border-slate-800 mb-8">
                 <button id="tab-btn-config" class="pb-4 text-sm tracking-widest transition-all tab-active">配置</button>
-                <button id="tab-btn-tbd" class="pb-4 text-sm tracking-widest transition-all text-slate-400">待定</button>
+                <button id="tab-btn-tbd" class="pb-4 text-sm tracking-widest transition-all text-slate-400">数据</button> <!-- 改名为数据 -->
             </div>
 
             <!-- 选项卡内容 1: 配置 -->
@@ -91,12 +91,9 @@
                 </div>
             </div>
 
-            <!-- 选项卡内容 2: 待定 -->
+            <!-- 内容区 -->
             <div id="tab-content-tbd" class="hidden">
-                <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-20 flex flex-col items-center justify-center italic text-slate-500">
-                    <span class="text-4xl mb-4">🚧</span>
-                    功能开发中...
-                </div>
+                <!-- 这里会被 DataManager.render 动态填充 -->
             </div>
         </section>
     </main>
