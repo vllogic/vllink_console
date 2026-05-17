@@ -320,20 +320,22 @@ const UI = {
     status: document.getElementById('connectionStatus')
 };
 
-// 【修复核心点】：建立连接和重连时，必须彻底清理旧数据
+// 【修正后的逻辑】：在成功确立连接后重置锁，保证操作取消时原有界面不丢失
 UI.connectBtn.addEventListener('click', async () => {
     try {
-        // 1. 强制重置索引锁，确保跨设备必定重载
+        // 1. 发起连接（如果在此步骤用户点击“取消”，会直接抛出异常被 catch 捕获，下方清理代码不会执行）
+        await vllink.connect();
+        
+        // 2. 成功连接到新的 USB 设备，此时强制清理旧状态以确保刷新
         ConfigEditor.lastSelectedIdx = -1;
         ConfigEditor.originalLines = [];
         if (ConfigEditor.editor) ConfigEditor.editor.innerText = "";
         DataManager.activeBuffers = {};
         vllink.isBusy = false;
+        lastFingerprint = "";
 
-        // 2. 发起连接
-        await vllink.connect();
         UI.status.innerText = "ONLINE: " + vllink.device.productName;
-        UI.connectBtn.innerText = "CONNECTED";
+        UI.connectBtn.innerText = "Connected";
         UI.connectBtn.classList.replace('bg-primary', 'bg-green-600');
         
         if (pollTimer) clearInterval(pollTimer);
@@ -343,15 +345,14 @@ UI.connectBtn.addEventListener('click', async () => {
                 if (!info) return;
                 updateDisplay(info);
                 
-                // 3. 索引检测：由于上面设置了 -1，首次一定不相等，必然触发 load
                 if (info.select_idx !== ConfigEditor.lastSelectedIdx) {
                     ConfigEditor.lastSelectedIdx = info.select_idx;
                     ConfigEditor.load(vllink);
                     if (!TabManager.contents.data.classList.contains('hidden')) DataManager.load();
                 }
             } catch (e) {
-                // 【修复核心点】：处理意外断开，深度清理残留状态
-                if (e.message.includes('disconnected') || e.message.includes('lost')) {
+                // 处理意外断开，深度清理残留状态
+                if (e.message.includes('disconnected') || e.message.includes('lost') || e.message.includes('network')) {
                     clearInterval(pollTimer);
                     UI.status.innerText = "OFFLINE";
                     UI.connectBtn.innerText = "RECONNECT";
@@ -372,7 +373,10 @@ UI.connectBtn.addEventListener('click', async () => {
                 }
             }
         }, 250);
-    } catch (e) { alert("Connect error: " + e.message); }
+    } catch (e) { 
+        // 用户取消或无设备权限时，原有的连接和 UI 状态不受任何影响
+        console.warn("Connect aborted or error: " + e.message); 
+    }
 });
 
 UI.deviceList.addEventListener('click', async (e) => {
@@ -409,7 +413,7 @@ function updateDisplay(info) {
                     <span class="uppercase tracking-tighter">Addr</span><span class="text-slate-600 dark:text-slate-300">${dev.mac}</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 mt-1">
-                    <div class="flex flex-col"><span class="text-[9px] text-slate-400 uppercase font-black">Uptime</span><span class="uptime-val font-mono text-sm font-bold text-slate-700 dark:text-slate-200">00:00:00</span></div>
+                    <div class="flex flex-col"><span class="text-[9px] text-slate-400 uppercase font-black">Uptime</span><span class="uptime-val font-mono text-sm font-bold">00:00:00</span></div>
                     <div class="flex flex-col items-end"><span class="text-[9px] text-slate-400 uppercase font-black">Latency</span><span class="delay-val font-mono text-sm text-primary font-black">-</span></div>
                 </div>
             </div>`).join('');
