@@ -10,16 +10,25 @@ class VllinkManager {
             { vendorId: 0x1209, productId: 0x6666 }, 
             { vendorId: 0x0d28, productId: 0x0204 }
         ];
-        this.isBusy = false; // 通讯排队锁
+        this.isBusy = false;
     }
 
-    async connect() {
-        this.device = await navigator.usb.requestDevice({ filters: this.filters });
+    /**
+     * @param {USBDevice} existingDevice - 用于拔插后的自动重连
+     */
+    async connect(existingDevice = null) {
+        if (existingDevice) {
+            this.device = existingDevice;
+        } else {
+            this.device = await navigator.usb.requestDevice({ filters: this.filters });
+        }
+        
         await this.device.open();
         const iface = this.device.configuration.interfaces.find(i => 
             i.alternate.interfaceClass === 0xFF && i.alternate.interfaceSubclass === 0x03
         );
         if (!iface) throw new Error("Vllink WebUSB Interface not found");
+        
         this.interfaceNum = iface.interfaceNumber;
         await this.device.claimInterface(this.interfaceNum);
         return this.device;
@@ -33,7 +42,12 @@ class VllinkManager {
                 request: 0x00, value: 0x00, index: this.interfaceNum
             }, 512);
             if (result.status === 'ok') return this.parseInfo(result.data.buffer);
-        } catch (e) { return null; }
+        } catch (e) {
+            if (e.name === 'NetworkError' || e.name === 'NotFoundError' || e.message.includes('disconnected')) {
+                throw e;
+            }
+            return null;
+        }
         return null;
     }
 
@@ -45,19 +59,14 @@ class VllinkManager {
         });
     }
 
-    /**
-     * WebUSB 专用 DAP 通讯：请求 -> 查询 -> 应答
-     */
     async dapExecute(payload) {
         if (!this.device) throw new Error("Device disconnected");
         
-        // 1. 发送请求 (0x10)
         await this.device.controlTransferOut({
             requestType: 'vendor', recipient: 'interface',
             request: 0x10, value: 0, index: this.interfaceNum
         }, payload);
 
-        // 2. 循环查询结果 (0x11)
         let ready = false;
         for (let i = 0; i < 100; i++) {
             await new Promise(r => setTimeout(r, 2)); 
@@ -69,7 +78,6 @@ class VllinkManager {
         }
         if (!ready) throw new Error("DAP Communication Timeout");
 
-        // 3. 提取应答 (0x10)
         const resp = await this.device.controlTransferIn({
             requestType: 'vendor', recipient: 'interface',
             request: 0x10, value: 0, index: this.interfaceNum
@@ -77,9 +85,6 @@ class VllinkManager {
         return new Uint8Array(resp.data.buffer);
     }
 
-    /**
-     * 获取配置与数据区块信息
-     */
     async getConfigInfo() {
         const pkg = new Uint8Array([0x91, 0x01]); 
         const resp = await this.dapExecute(pkg);
@@ -90,10 +95,9 @@ class VllinkManager {
             version: view.getUint32(4, true).toString(16),
             size: view.getUint32(8, true),
             fileLimit: view.getUint32(12, true),
-            fileLengths: [] // KB
+            fileLengths: [] 
         };
 
-        // 解析 8 个 uint16_t (Index 16-31)
         for (let i = 0; i < 8; i++) {
             info.fileLengths.push(view.getUint16(16 + (i * 2), true));
         }
@@ -153,9 +157,6 @@ class VllinkManager {
         }
     }
 
-    /**
-     * 数据文件块写入 (0x21)
-     */
     async writeFileChunk(idx, fullLength, pos, data256) {
         const pkg = new Uint8Array(18 + 256);
         pkg[0] = 0x91; pkg[1] = 0x21;
@@ -169,9 +170,6 @@ class VllinkManager {
         if (resp[3] !== 0) throw new Error(`Write failed @ 0x${pos.toString(16)} (Err: ${resp[3]})`);
     }
 
-    /**
-     * 数据文件块读取 (0x11)
-     */
     async readFileChunk(idx, fullLength, pos) {
         const pkg = new Uint8Array(18);
         pkg[0] = 0x91; pkg[1] = 0x11;

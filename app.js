@@ -1,5 +1,5 @@
 /**
- * 三模态主题管理器
+ * 三模态主题管理器 (保持不变)
  */
 const ThemeManager = {
     btns: document.querySelectorAll('[data-theme]'),
@@ -47,13 +47,14 @@ const TabManager = {
 };
 
 /**
- * 数据区块管理模块
+ * 数据区块管理模块 (保持不变)
  */
 const DataManager = {
     container: document.getElementById('tab-content-tbd'),
     activeBuffers: {},
 
     async load() {
+        if (!vllink.device) return; 
         this.container.innerHTML = `<div class="p-20 text-center animate-pulse text-slate-500 italic text-sm font-mono">Loading data segments...</div>`;
         vllink.isBusy = true;
         try {
@@ -69,7 +70,6 @@ const DataManager = {
     render(info) {
         let html = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">`;
         let blocksFound = 0;
-
         for (let i = 0; i < info.fileLimit; i++) {
             const kb = info.fileLengths[i];
             if (kb > 0) {
@@ -204,7 +204,7 @@ const DataManager = {
 };
 
 /**
- * 配置编辑器模块
+ * 配置编辑器模块 (保持不变)
  */
 const ConfigEditor = {
     container: document.getElementById('tab-content-config'),
@@ -226,7 +226,7 @@ const ConfigEditor = {
         text.innerText = s.label;
     },
     async load(manager) {
-        if (this.isBusy) return;
+        if (this.isBusy || !manager.device) return;
         this.isBusy = true; this.lockUI(true); manager.isBusy = true;
         try {
             this.container.innerHTML = `<div class="p-20 text-center animate-pulse text-slate-500 italic text-sm font-mono">Loading config...</div>`;
@@ -308,11 +308,12 @@ const ConfigEditor = {
 };
 
 /**
- * 核心逻辑集成与状态机
+ * 核心逻辑集成与状态机 (支持无感重连)
  */
 const vllink = new VllinkManager();
 let pollTimer = null;
 let lastFingerprint = "";
+let lastDeviceCache = null; // 用于缓存断开前的设备特征
 
 const UI = {
     connectBtn: document.getElementById('connectBtn'),
@@ -320,63 +321,97 @@ const UI = {
     status: document.getElementById('connectionStatus')
 };
 
-// 【修正后的逻辑】：在成功确立连接后重置锁，保证操作取消时原有界面不丢失
-UI.connectBtn.addEventListener('click', async () => {
-    try {
-        // 1. 发起连接（如果在此步骤用户点击“取消”，会直接抛出异常被 catch 捕获，下方清理代码不会执行）
-        await vllink.connect();
-        
-        // 2. 成功连接到新的 USB 设备，此时强制清理旧状态以确保刷新
-        ConfigEditor.lastSelectedIdx = -1;
-        ConfigEditor.originalLines = [];
-        if (ConfigEditor.editor) ConfigEditor.editor.innerText = "";
-        DataManager.activeBuffers = {};
-        vllink.isBusy = false;
-        lastFingerprint = "";
+// 抽取公共的连接执行逻辑
+async function performConnection(autoDevice = null) {
+    await vllink.connect(autoDevice);
+    
+    // 保存特征指纹以便自动重连
+    lastDeviceCache = {
+        vid: vllink.device.vendorId,
+        pid: vllink.device.productId,
+        sn: vllink.device.serialNumber
+    };
 
-        UI.status.innerText = "ONLINE: " + vllink.device.productName;
-        UI.connectBtn.innerText = "Connected";
-        UI.connectBtn.classList.replace('bg-primary', 'bg-green-600');
-        
-        if (pollTimer) clearInterval(pollTimer);
-        pollTimer = setInterval(async () => {
-            try {
-                const info = await vllink.queryInfo();
-                if (!info) return;
-                updateDisplay(info);
-                
-                if (info.select_idx !== ConfigEditor.lastSelectedIdx) {
-                    ConfigEditor.lastSelectedIdx = info.select_idx;
-                    ConfigEditor.load(vllink);
-                    if (!TabManager.contents.data.classList.contains('hidden')) DataManager.load();
-                }
-            } catch (e) {
-                // 处理意外断开，深度清理残留状态
-                if (e.message.includes('disconnected') || e.message.includes('lost') || e.message.includes('network')) {
-                    clearInterval(pollTimer);
-                    UI.status.innerText = "OFFLINE";
-                    UI.connectBtn.innerText = "RECONNECT";
-                    UI.connectBtn.classList.replace('bg-green-600', 'bg-primary');
-                    UI.deviceList.innerHTML = `<div class="text-center py-10 text-slate-500 text-xs italic">Waiting for connection...</div>`;
-                    lastFingerprint = "";
+    ConfigEditor.lastSelectedIdx = -1;
+    ConfigEditor.originalLines = [];
+    DataManager.activeBuffers = {};
+    vllink.isBusy = false;
+    lastFingerprint = "";
 
-                    // 清理编辑器与缓存
-                    ConfigEditor.lastSelectedIdx = -1;
-                    ConfigEditor.originalLines = [];
-                    if (ConfigEditor.editor) ConfigEditor.editor.innerText = "";
-                    ConfigEditor.updateStatus('error');
-                    ConfigEditor.lockUI(false);
-                    
-                    DataManager.activeBuffers = {};
-                    DataManager.container.innerHTML = "";
-                    vllink.isBusy = false;
-                }
+    UI.status.innerText = "ONLINE: " + vllink.device.productName;
+    UI.connectBtn.innerText = "CONNECTED";
+    UI.connectBtn.classList.replace('bg-primary', 'bg-green-600');
+    
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+        try {
+            const info = await vllink.queryInfo();
+            if (!info) return;
+            updateDisplay(info);
+            
+            if (info.select_idx !== ConfigEditor.lastSelectedIdx) {
+                ConfigEditor.lastSelectedIdx = info.select_idx;
+                ConfigEditor.load(vllink);
+                if (!TabManager.contents.data.classList.contains('hidden')) DataManager.load();
             }
-        }, 250);
-    } catch (e) { 
-        // 用户取消或无设备权限时，原有的连接和 UI 状态不受任何影响
-        console.warn("Connect aborted or error: " + e.message); 
+        } catch (e) {
+            if (e.message.includes('disconnected') || e.name === 'NetworkError' || e.name === 'NotFoundError') {
+                handleDeviceDisconnect();
+            }
+        }
+    }, 250);
+}
+
+// 物理断开的集中清理函数
+function handleDeviceDisconnect() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    UI.status.innerText = "OFFLINE";
+    UI.connectBtn.innerText = "RECONNECT";
+    UI.connectBtn.classList.replace('bg-green-600', 'bg-primary');
+    UI.deviceList.innerHTML = `<div class="text-center py-10 text-slate-500 text-xs italic">Waiting for connection...</div>`;
+    lastFingerprint = "";
+
+    ConfigEditor.lastSelectedIdx = -1;
+    ConfigEditor.originalLines = [];
+    if (ConfigEditor.editor) ConfigEditor.editor.innerText = "";
+    ConfigEditor.updateStatus('error');
+    ConfigEditor.lockUI(false);
+    ConfigEditor.container.innerHTML = `<div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-20 flex flex-col items-center justify-center italic text-slate-500"><span class="text-4xl mb-4">🔌</span>Device disconnected...</div>`;
+    
+    DataManager.activeBuffers = {};
+    DataManager.container.innerHTML = `<div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-20 flex flex-col items-center justify-center italic text-slate-500"><span class="text-4xl mb-4">🔌</span>Device disconnected...</div>`;
+    
+    vllink.isBusy = false;
+    vllink.device = null;
+}
+
+// 原生监听：当匹配且刚才断开过时，静默拉起重连 (无需用户点击)
+navigator.usb.addEventListener('connect', async (event) => {
+    const dev = event.device;
+    if (!vllink.device && lastDeviceCache && 
+        dev.vendorId === lastDeviceCache.vid && 
+        dev.productId === lastDeviceCache.pid && 
+        dev.serialNumber === lastDeviceCache.sn) {
+        try {
+            UI.status.innerText = "AUTO CONNECTING...";
+            await performConnection(dev);
+        } catch (e) {
+            console.warn("Auto connect failed:", e);
+            handleDeviceDisconnect();
+        }
     }
+});
+
+// 原生监听：物理断开拔出
+navigator.usb.addEventListener('disconnect', (event) => {
+    if (vllink.device && event.device === vllink.device) {
+        handleDeviceDisconnect();
+    }
+});
+
+UI.connectBtn.addEventListener('click', async () => {
+    try { await performConnection(); } 
+    catch (e) { console.warn("Connect aborted or error: " + e.message); }
 });
 
 UI.deviceList.addEventListener('click', async (e) => {
@@ -413,7 +448,7 @@ function updateDisplay(info) {
                     <span class="uppercase tracking-tighter">Addr</span><span class="text-slate-600 dark:text-slate-300">${dev.mac}</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 mt-1">
-                    <div class="flex flex-col"><span class="text-[9px] text-slate-400 uppercase font-black">Uptime</span><span class="uptime-val font-mono text-sm font-bold">00:00:00</span></div>
+                    <div class="flex flex-col"><span class="text-[9px] text-slate-400 uppercase font-black">Uptime</span><span class="uptime-val font-mono text-sm font-bold text-slate-700 dark:text-slate-200">00:00:00</span></div>
                     <div class="flex flex-col items-end"><span class="text-[9px] text-slate-400 uppercase font-black">Latency</span><span class="delay-val font-mono text-sm text-primary font-black">-</span></div>
                 </div>
             </div>`).join('');
