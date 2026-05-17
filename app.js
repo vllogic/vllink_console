@@ -1,5 +1,5 @@
 /**
- * 三模态主题管理器 (保持不变)
+ * 三模态主题管理器
  */
 const ThemeManager = {
     btns: document.querySelectorAll('[data-theme]'),
@@ -47,11 +47,11 @@ const TabManager = {
 };
 
 /**
- * 数据区块管理模块 - 持续保留 UI 版
+ * 数据区块管理模块
  */
 const DataManager = {
     container: document.getElementById('tab-content-tbd'),
-    activeBuffers: {}, // 内存中持有的原始数据
+    activeBuffers: {},
 
     async load() {
         this.container.innerHTML = `<div class="p-20 text-center animate-pulse text-slate-500 italic text-sm font-mono">Loading data segments...</div>`;
@@ -77,7 +77,6 @@ const DataManager = {
                 const hasData = !!this.activeBuffers[i];
                 html += `
                 <div class="glass border border-slate-200 dark:border-slate-800 rounded-3xl p-6 flex flex-col gap-5 shadow-xl transition-all relative overflow-hidden">
-                    <!-- 标题行 -->
                     <div class="flex justify-between items-center">
                         <div class="flex items-center gap-3">
                             <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-500 font-black text-xs border border-slate-200/50 dark:border-white/10">${i}</div>
@@ -86,7 +85,6 @@ const DataManager = {
                         <span class="text-[10px] font-mono bg-slate-100 dark:bg-white/5 px-2 py-1 rounded text-slate-500">MAX: ${kb} KB</span>
                     </div>
 
-                    <!-- 进度 UI (持续显示) -->
                     <div id="data-ui-${i}" class="space-y-3 bg-slate-50 dark:bg-black/20 p-4 rounded-2xl border border-slate-100 dark:border-white/5">
                         <div class="flex justify-between items-center">
                             <span id="data-status-text-${i}" class="text-[10px] font-black uppercase tracking-widest text-slate-400">准备就绪</span>
@@ -100,17 +98,9 @@ const DataManager = {
                         </div>
                     </div>
 
-                    <!-- 动作按钮 (持续显示) -->
                     <div class="flex gap-3">
-                        <button onclick="DataManager.pickFile(${i}, ${kb})" id="btn-load-${i}" 
-                            class="flex-1 py-3 bg-primary text-white rounded-xl font-black text-xs hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/20">
-                            载入并写入
-                        </button>
-                        <button onclick="DataManager.verify(${i})" id="btn-verify-${i}" 
-                            ${hasData ? '' : 'disabled'}
-                            class="flex-1 py-3 border-2 border-primary/30 text-primary rounded-xl font-black text-xs hover:bg-primary/5 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale disabled:pointer-events-none">
-                            回读校验
-                        </button>
+                        <button onclick="DataManager.pickFile(${i}, ${kb})" id="btn-load-${i}" class="flex-1 py-3 bg-primary text-white rounded-xl font-black text-xs hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/20">载入并写入</button>
+                        <button onclick="DataManager.verify(${i})" id="btn-verify-${i}" ${hasData ? '' : 'disabled'} class="flex-1 py-3 border-2 border-primary/30 text-primary rounded-xl font-black text-xs hover:bg-primary/5 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale disabled:pointer-events-none">回读校验</button>
                     </div>
                     <input type="file" id="input-file-${i}" class="hidden" onchange="DataManager.handlePick(${i}, ${kb})">
                 </div>`;
@@ -173,8 +163,6 @@ const DataManager = {
 
         this.showFeedback(idx, isWrite ? '写入中...' : '校验中...', 'work');
         vllink.isBusy = true;
-        
-        // 锁定所有交互
         btnLoad.disabled = true;
         btnVerify.disabled = true;
         
@@ -187,9 +175,7 @@ const DataManager = {
                     await vllink.writeFileChunk(idx, data.length, pos, chunk);
                 } else {
                     const hardwareChunk = await vllink.readFileChunk(idx, data.length, pos);
-                    if (chunk.some((val, j) => val !== hardwareChunk[j])) {
-                        throw new Error(`数据不一致 @ 0x${pos.toString(16)}`);
-                    }
+                    if (chunk.some((val, j) => val !== hardwareChunk[j])) throw new Error(`数据不一致 @ 0x${pos.toString(16)}`);
                 }
 
                 const totalDone = pos + 256;
@@ -201,19 +187,13 @@ const DataManager = {
                 percentTxt.innerText = `${percent}%`;
                 speedTxt.innerText = `Speed: ${speed} KB/s`;
             }
-
             this.showFeedback(idx, isWrite ? '写入成功 ✓' : '校验通过 ✓', 'success');
-
         } catch (e) {
             this.showFeedback(idx, e.message, 'fail');
         } finally {
             vllink.isBusy = false;
-            // 解锁逻辑
             btnLoad.disabled = false;
-            // 只有内存里有数据时才解锁校验按钮
-            if (this.activeBuffers[idx]) {
-                btnVerify.disabled = false;
-            }
+            if (this.activeBuffers[idx]) btnVerify.disabled = false;
         }
     },
 
@@ -224,7 +204,7 @@ const DataManager = {
 };
 
 /**
- * 配置编辑器模块 (保持不变)
+ * 配置编辑器模块
  */
 const ConfigEditor = {
     container: document.getElementById('tab-content-config'),
@@ -328,7 +308,7 @@ const ConfigEditor = {
 };
 
 /**
- * 状态机集成
+ * 核心逻辑集成与状态机
  */
 const vllink = new VllinkManager();
 let pollTimer = null;
@@ -340,32 +320,59 @@ const UI = {
     status: document.getElementById('connectionStatus')
 };
 
+// 【修复核心点】：建立连接和重连时，必须彻底清理旧数据
 UI.connectBtn.addEventListener('click', async () => {
     try {
+        // 1. 强制重置索引锁，确保跨设备必定重载
+        ConfigEditor.lastSelectedIdx = -1;
+        ConfigEditor.originalLines = [];
+        if (ConfigEditor.editor) ConfigEditor.editor.innerText = "";
+        DataManager.activeBuffers = {};
+        vllink.isBusy = false;
+
+        // 2. 发起连接
         await vllink.connect();
         UI.status.innerText = "ONLINE: " + vllink.device.productName;
         UI.connectBtn.innerText = "CONNECTED";
         UI.connectBtn.classList.replace('bg-primary', 'bg-green-600');
+        
         if (pollTimer) clearInterval(pollTimer);
         pollTimer = setInterval(async () => {
             try {
                 const info = await vllink.queryInfo();
                 if (!info) return;
                 updateDisplay(info);
+                
+                // 3. 索引检测：由于上面设置了 -1，首次一定不相等，必然触发 load
                 if (info.select_idx !== ConfigEditor.lastSelectedIdx) {
                     ConfigEditor.lastSelectedIdx = info.select_idx;
                     ConfigEditor.load(vllink);
                     if (!TabManager.contents.data.classList.contains('hidden')) DataManager.load();
                 }
             } catch (e) {
+                // 【修复核心点】：处理意外断开，深度清理残留状态
                 if (e.message.includes('disconnected') || e.message.includes('lost')) {
                     clearInterval(pollTimer);
                     UI.status.innerText = "OFFLINE";
                     UI.connectBtn.innerText = "RECONNECT";
+                    UI.connectBtn.classList.replace('bg-green-600', 'bg-primary');
+                    UI.deviceList.innerHTML = `<div class="text-center py-10 text-slate-500 text-xs italic">Waiting for connection...</div>`;
+                    lastFingerprint = "";
+
+                    // 清理编辑器与缓存
+                    ConfigEditor.lastSelectedIdx = -1;
+                    ConfigEditor.originalLines = [];
+                    if (ConfigEditor.editor) ConfigEditor.editor.innerText = "";
+                    ConfigEditor.updateStatus('error');
+                    ConfigEditor.lockUI(false);
+                    
+                    DataManager.activeBuffers = {};
+                    DataManager.container.innerHTML = "";
+                    vllink.isBusy = false;
                 }
             }
         }, 250);
-    } catch (e) { console.error(e); }
+    } catch (e) { alert("Connect error: " + e.message); }
 });
 
 UI.deviceList.addEventListener('click', async (e) => {
@@ -402,7 +409,7 @@ function updateDisplay(info) {
                     <span class="uppercase tracking-tighter">Addr</span><span class="text-slate-600 dark:text-slate-300">${dev.mac}</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 mt-1">
-                    <div class="flex flex-col"><span class="text-[9px] text-slate-400 uppercase font-black">Uptime</span><span class="uptime-val font-mono text-sm font-bold">00:00:00</span></div>
+                    <div class="flex flex-col"><span class="text-[9px] text-slate-400 uppercase font-black">Uptime</span><span class="uptime-val font-mono text-sm font-bold text-slate-700 dark:text-slate-200">00:00:00</span></div>
                     <div class="flex flex-col items-end"><span class="text-[9px] text-slate-400 uppercase font-black">Latency</span><span class="delay-val font-mono text-sm text-primary font-black">-</span></div>
                 </div>
             </div>`).join('');
