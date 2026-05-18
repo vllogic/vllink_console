@@ -34,6 +34,18 @@ class VllinkManager {
         return this.device;
     }
 
+    async disconnect() {
+        this.isBusy = true;
+        if (this.device && this.device.opened) {
+            try {
+                await this.device.releaseInterface(this.interfaceNum);
+                await this.device.close();
+            } catch (e) { console.warn("Release warning:", e); }
+        }
+        this.device = null;
+        this.isBusy = false;
+    }
+
     async queryInfo() {
         if (!this.device || this.isBusy) return null;
         try {
