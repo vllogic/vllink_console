@@ -14,43 +14,53 @@ class VllinkManager {
     }
 
     /**
-     * 连接设备并独占接口 (支持静默免弹窗重连)
+     * 连接设备并独占接口
      * @param {USBDevice} existingDevice - 预期的设备实例
+     * @param {boolean} forceRequest - 是否强制弹出浏览器设备选择框
      */
-    async connect(existingDevice = null) {
+    async connect(existingDevice = null, forceRequest = false) {
         if (existingDevice) {
             // 场景 1: 原生 connect 事件触发的自动重连
             this.device = existingDevice;
+        } else if (forceRequest) {
+            // 场景 2: 用户主动点击了断开后，要求强制弹窗重新选择
+            this.device = await navigator.usb.requestDevice({ filters: this.filters });
         } else {
-            // 场景 2: 用户主动点击 CONNECT 按钮
-            // 尝试静默获取当前已插入、且曾被授权过的设备列表
+            // 场景 3: 常规点击或刷新开屏，尝试静默获取
             const authorizedDevices = await navigator.usb.getDevices();
-            
-            // 寻找符合 Vllink VID/PID 的已授权设备
-            const matchedDevice = authorizedDevices.find(d => 
+            const matchedDevices = authorizedDevices.filter(d => 
                 this.filters.some(f => f.vendorId === d.vendorId && f.productId === d.productId)
             );
 
-            if (matchedDevice) {
-                // 找到了已授权的设备，直接免弹窗使用
-                this.device = matchedDevice;
+            if (matchedDevices.length > 0) {
+                // 【新特性】：优先寻找最后一次成功连接的设备 (通过 serialNumber 匹配)
+                const lastSn = localStorage.getItem('vllink-last-sn');
+                let target = matchedDevices.find(d => d.serialNumber && d.serialNumber === lastSn);
+                
+                // 如果没找到匹配 SN 的，默认连第一个
+                if (!target) target = matchedDevices[0];
+                this.device = target;
             } else {
-                // 如果是第一次使用，或换了新设备，弹出浏览器的原生授权框
+                // 完全没授权过，只能弹窗
                 this.device = await navigator.usb.requestDevice({ filters: this.filters });
             }
         }
 
         await this.device.open();
         
-        // 查找特定的 WebUSB 接口 (Class: 0xFF, Subclass: 0x03)
         const iface = this.device.configuration.interfaces.find(i => 
             i.alternate.interfaceClass === 0xFF && i.alternate.interfaceSubclass === 0x03
         );
-        
         if (!iface) throw new Error("Vllink WebUSB Interface not found");
         
         this.interfaceNum = iface.interfaceNumber;
         await this.device.claimInterface(this.interfaceNum);
+
+        // 【新特性】：连接成功后，持久化记录当前设备的唯一序列号
+        if (this.device.serialNumber) {
+            localStorage.setItem('vllink-last-sn', this.device.serialNumber);
+        }
+
         return this.device;
     }
 
@@ -59,7 +69,7 @@ class VllinkManager {
         if (this.device && this.device.opened) {
             try {
                 await this.device.releaseInterface(this.interfaceNum);
-                await this.device.close(); // 彻底释放系统句柄
+                await this.device.close();
             } catch (e) { console.warn("Release warning:", e); }
         }
         this.device = null;
@@ -75,7 +85,6 @@ class VllinkManager {
             }, 512);
             if (result.status === 'ok') return this.parseInfo(result.data.buffer);
         } catch (e) {
-            // 致命断开错误向上抛出，触发前端清理
             if (e.name === 'NetworkError' || e.name === 'NotFoundError' || e.message.includes('disconnected')) {
                 throw e;
             }
@@ -92,19 +101,14 @@ class VllinkManager {
         });
     }
 
-    /**
-     * WebUSB 专用 DAP 通讯：请求 -> 查询 -> 应答
-     */
     async dapExecute(payload) {
         if (!this.device) throw new Error("Device disconnected");
         
-        // 1. 发送请求 (0x10)
         await this.device.controlTransferOut({
             requestType: 'vendor', recipient: 'interface',
             request: 0x10, value: 0, index: this.interfaceNum
         }, payload);
 
-        // 2. 循环查询结果 (0x11)
         let ready = false;
         for (let i = 0; i < 100; i++) {
             await new Promise(r => setTimeout(r, 2)); 
@@ -116,7 +120,6 @@ class VllinkManager {
         }
         if (!ready) throw new Error("DAP Communication Timeout");
 
-        // 3. 提取应答 (0x10)
         const resp = await this.device.controlTransferIn({
             requestType: 'vendor', recipient: 'interface',
             request: 0x10, value: 0, index: this.interfaceNum
@@ -136,7 +139,6 @@ class VllinkManager {
             fileLimit: view.getUint32(12, true),
             fileLengths: [] 
         };
-
         for (let i = 0; i < 8; i++) {
             info.fileLengths.push(view.getUint16(16 + (i * 2), true));
         }

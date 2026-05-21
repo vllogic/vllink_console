@@ -342,12 +342,15 @@ const ConfigEditor = {
 };
 
 /**
- * 核心逻辑集成与状态机
+ * 核心逻辑集成与状态机 (包含强制手动选择与无感重连)
  */
 const vllink = new VllinkManager();
 let pollTimer = null;
 let lastFingerprint = "";
 let lastDeviceCache = null;
+
+// 【新特性】：记录用户是否手动断开的临时标志位
+let forceManualSelection = false; 
 
 const UI = {
     connectBtn: document.getElementById('connectBtn'),
@@ -355,11 +358,11 @@ const UI = {
     status: document.getElementById('connectionStatus')
 };
 
-// 执行连接并启动轮询
-async function performConnection(autoDevice = null) {
-    await vllink.connect(autoDevice);
+// 提取的连接核心流程
+async function performConnection(autoDevice = null, forceRequest = false) {
+    await vllink.connect(autoDevice, forceRequest);
     
-    // 缓存设备特征以备后续原生事件对比
+    // 缓存设备特征以备自动重连
     lastDeviceCache = {
         vid: vllink.device.vendorId,
         pid: vllink.device.productId,
@@ -391,18 +394,23 @@ async function performConnection(autoDevice = null) {
             }
         } catch (e) {
             if (e.message.includes('disconnected') || e.name === 'NetworkError' || e.name === 'NotFoundError') {
-                handleDeviceDisconnect();
+                handleDeviceDisconnect(false); // 物理断开，不触发手动标志
             }
         }
     }, 250);
 }
 
-// 主动断开或物理断开时的清理逻辑
+// 统一的断开处理
 async function handleDeviceDisconnect(manual = false) {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     
     if (manual) {
         if (typeof vllink.disconnect === 'function') await vllink.disconnect();
+        // 如果是手动断开，打上临时强制标志
+        forceManualSelection = true;
+    } else {
+        // 如果是线缆被意外拔出，不认为是主动想换设备，下次插上允许自动直连
+        forceManualSelection = false;
     }
 
     UI.status.innerText = "OFFLINE";
@@ -427,21 +435,24 @@ async function handleDeviceDisconnect(manual = false) {
 }
 
 // ==========================================
-// 新增核心逻辑：网页启动时的“静默自动重连”
+// 网页启动时的“静默自动重连”
 // ==========================================
 async function autoConnectOnLoad() {
     if (!navigator.usb) return;
     try {
-        // 获取已经被用户授权且当前插在电脑上的 USB 设备
         const authorizedDevices = await navigator.usb.getDevices();
-        const matchedDevice = authorizedDevices.find(d => 
+        const matchedDevices = authorizedDevices.filter(d => 
             vllink.filters.some(f => f.vendorId === d.vendorId && f.productId === d.productId)
         );
 
-        // 如果找到了已授权的 Vllink，免弹出窗口直接连接
-        if (matchedDevice) {
+        if (matchedDevices.length > 0) {
+            // 【新特性】：寻找 SN 匹配的最近连接设备
+            const lastSn = localStorage.getItem('vllink-last-sn');
+            let target = matchedDevices.find(d => d.serialNumber && d.serialNumber === lastSn);
+            if (!target) target = matchedDevices[0]; // fallback
+
             UI.status.innerText = "AUTO CONNECTING...";
-            await performConnection(matchedDevice);
+            await performConnection(target);
         }
     } catch (e) {
         console.warn("Auto connect on load failed:", e);
@@ -459,27 +470,32 @@ navigator.usb.addEventListener('connect', async (event) => {
             UI.status.innerText = "AUTO CONNECTING...";
             await performConnection(dev);
         } catch (e) {
-            handleDeviceDisconnect();
+            handleDeviceDisconnect(false);
         }
     }
 });
 
-// 原生监听：物理断开拔出
 navigator.usb.addEventListener('disconnect', (event) => {
     if (vllink.device && event.device === vllink.device) {
-        handleDeviceDisconnect();
+        handleDeviceDisconnect(false);
     }
 });
 
-// 手动点击大按钮：连接或断开
+// 手动点击大按钮
 UI.connectBtn.addEventListener('click', async () => {
+    // 已经连接时，点击即为主动断开 -> 设置标记
     if (vllink.device) {
         await handleDeviceDisconnect(true);
         return;
     }
+    
+    // 执行连接。如果 forceManualSelection 为 true，系统会强制弹出原生框。
     try {
-        await performConnection();
+        await performConnection(null, forceManualSelection);
+        // 连接成功后，清除该临时强制标记
+        forceManualSelection = false;
     } catch (e) {
+        // 用户可能在原生弹窗里点了“取消”，保留标记以供下次继续选
         console.warn("Connect aborted or error: " + e.message);
     }
 });
