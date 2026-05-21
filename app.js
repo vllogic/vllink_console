@@ -376,7 +376,7 @@ async function performConnection(autoDevice = null, forceRequest = false) {
     lastFingerprint = "";
 
     UI.status.innerText = "ONLINE: " + vllink.device.productName;
-    UI.connectBtn.innerText = "DISCONNECT (释放给第三方)";
+    UI.connectBtn.innerText = "Disconnect";
     UI.connectBtn.classList.remove('bg-primary', 'bg-rose-500');
     UI.connectBtn.classList.add('bg-green-600');
     
@@ -414,7 +414,7 @@ async function handleDeviceDisconnect(manual = false) {
     }
 
     UI.status.innerText = "OFFLINE";
-    UI.connectBtn.innerText = "CONNECT DEVICE";
+    UI.connectBtn.innerText = "Connect Vllink";
     UI.connectBtn.classList.remove('bg-green-600', 'bg-rose-500');
     UI.connectBtn.classList.add('bg-primary');
     UI.deviceList.innerHTML = `<div class="text-center py-10 text-slate-500 text-xs italic">Waiting for connection...</div>`;
