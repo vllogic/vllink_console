@@ -10,23 +10,43 @@ class VllinkManager {
             { vendorId: 0x1209, productId: 0x6666 }, 
             { vendorId: 0x0d28, productId: 0x0204 }
         ];
-        this.isBusy = false;
+        this.isBusy = false; // 通讯排队锁
     }
 
     /**
-     * @param {USBDevice} existingDevice - 用于拔插后的自动重连
+     * 连接设备并独占接口 (支持静默免弹窗重连)
+     * @param {USBDevice} existingDevice - 预期的设备实例
      */
     async connect(existingDevice = null) {
         if (existingDevice) {
+            // 场景 1: 原生 connect 事件触发的自动重连
             this.device = existingDevice;
         } else {
-            this.device = await navigator.usb.requestDevice({ filters: this.filters });
+            // 场景 2: 用户主动点击 CONNECT 按钮
+            // 尝试静默获取当前已插入、且曾被授权过的设备列表
+            const authorizedDevices = await navigator.usb.getDevices();
+            
+            // 寻找符合 Vllink VID/PID 的已授权设备
+            const matchedDevice = authorizedDevices.find(d => 
+                this.filters.some(f => f.vendorId === d.vendorId && f.productId === d.productId)
+            );
+
+            if (matchedDevice) {
+                // 找到了已授权的设备，直接免弹窗使用
+                this.device = matchedDevice;
+            } else {
+                // 如果是第一次使用，或换了新设备，弹出浏览器的原生授权框
+                this.device = await navigator.usb.requestDevice({ filters: this.filters });
+            }
         }
-        
+
         await this.device.open();
+        
+        // 查找特定的 WebUSB 接口 (Class: 0xFF, Subclass: 0x03)
         const iface = this.device.configuration.interfaces.find(i => 
             i.alternate.interfaceClass === 0xFF && i.alternate.interfaceSubclass === 0x03
         );
+        
         if (!iface) throw new Error("Vllink WebUSB Interface not found");
         
         this.interfaceNum = iface.interfaceNumber;
@@ -39,7 +59,7 @@ class VllinkManager {
         if (this.device && this.device.opened) {
             try {
                 await this.device.releaseInterface(this.interfaceNum);
-                await this.device.close();
+                await this.device.close(); // 彻底释放系统句柄
             } catch (e) { console.warn("Release warning:", e); }
         }
         this.device = null;
@@ -55,6 +75,7 @@ class VllinkManager {
             }, 512);
             if (result.status === 'ok') return this.parseInfo(result.data.buffer);
         } catch (e) {
+            // 致命断开错误向上抛出，触发前端清理
             if (e.name === 'NetworkError' || e.name === 'NotFoundError' || e.message.includes('disconnected')) {
                 throw e;
             }
@@ -71,14 +92,19 @@ class VllinkManager {
         });
     }
 
+    /**
+     * WebUSB 专用 DAP 通讯：请求 -> 查询 -> 应答
+     */
     async dapExecute(payload) {
         if (!this.device) throw new Error("Device disconnected");
         
+        // 1. 发送请求 (0x10)
         await this.device.controlTransferOut({
             requestType: 'vendor', recipient: 'interface',
             request: 0x10, value: 0, index: this.interfaceNum
         }, payload);
 
+        // 2. 循环查询结果 (0x11)
         let ready = false;
         for (let i = 0; i < 100; i++) {
             await new Promise(r => setTimeout(r, 2)); 
@@ -90,6 +116,7 @@ class VllinkManager {
         }
         if (!ready) throw new Error("DAP Communication Timeout");
 
+        // 3. 提取应答 (0x10)
         const resp = await this.device.controlTransferIn({
             requestType: 'vendor', recipient: 'interface',
             request: 0x10, value: 0, index: this.interfaceNum
@@ -135,8 +162,10 @@ class VllinkManager {
             view.setUint32(6, totalSize, true);
             view.setUint32(10, offset, true);
             view.setUint32(14, len, true);
+            
             const resp = await this.dapExecute(pkg);
             if (resp[3] !== 0) break;
+            
             const chunkLen = new DataView(resp.buffer).getUint32(4, true);
             const chunkData = resp.slice(8, 8 + chunkLen);
             const tmp = new Uint8Array(completeData.length + chunkData.length);
@@ -150,8 +179,10 @@ class VllinkManager {
     async writeConfig(text, totalSize) {
         const encoder = new TextEncoder();
         const rawBytes = encoder.encode(text);
+        
         const fullPayload = new Uint8Array(totalSize);
         fullPayload.set(rawBytes.slice(0, totalSize));
+        
         let offset = 0;
         while (offset < totalSize) {
             const len = Math.min(256, totalSize - offset);
@@ -163,6 +194,7 @@ class VllinkManager {
             view.setUint32(10, offset, true);
             view.setUint32(14, len, true);
             pkg.set(fullPayload.slice(offset, offset + len), 18);
+            
             const resp = await this.dapExecute(pkg);
             if (resp[3] !== 0) throw new Error("Write Error");
             offset += len;
@@ -178,6 +210,7 @@ class VllinkManager {
         view.setUint32(10, pos, true);
         view.setUint32(14, 256, true);
         pkg.set(data256, 18);
+        
         const resp = await this.dapExecute(pkg);
         if (resp[3] !== 0) throw new Error(`Write failed @ 0x${pos.toString(16)} (Err: ${resp[3]})`);
     }
@@ -190,8 +223,10 @@ class VllinkManager {
         view.setUint32(6, fullLength, true);
         view.setUint32(10, pos, true);
         view.setUint32(14, 256, true);
+        
         const resp = await this.dapExecute(pkg);
         if (resp[3] !== 0) throw new Error(`Read failed @ 0x${pos.toString(16)}`);
+        
         const len = new DataView(resp.buffer).getUint32(4, true);
         return resp.slice(8, 8 + len);
     }
@@ -200,6 +235,7 @@ class VllinkManager {
         const view = new DataView(buffer);
         const decoder = new TextDecoder();
         const info = { select_idx: view.getUint8(0), local: null, remote: [] };
+        
         const parseNode = (offset) => {
             const macRaw = new Uint8Array(buffer, offset + 16, 6);
             const macStr = Array.from(macRaw).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(':');
@@ -207,6 +243,7 @@ class VllinkManager {
             let aliasStr = decoder.decode(aliasRaw).replace(/\0/g, '').trim();
             return { us: view.getBigUint64(offset, true), delay_us: view.getUint32(offset + 8, true), mac: macStr, alias: aliasStr || "Unnamed" };
         };
+        
         info.local = parseNode(32);
         for (let i = 0; i < 9; i++) {
             const offset = 32 + 48 + (i * 48);

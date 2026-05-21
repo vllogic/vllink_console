@@ -1,5 +1,5 @@
 /**
- * 三模态主题管理器 (Dark / Auto / Light)
+ * 三模态主题管理器
  */
 const ThemeManager = {
     btns: document.querySelectorAll('[data-theme]'),
@@ -47,11 +47,11 @@ const TabManager = {
 };
 
 /**
- * 数据区块管理模块 (包含分片传文件、校验、无弹窗进度反馈)
+ * 数据区块管理模块
  */
 const DataManager = {
     container: document.getElementById('tab-content-tbd'),
-    activeBuffers: {}, // 内存中持有的原始数据缓存
+    activeBuffers: {}, 
 
     async load() {
         if (!vllink.device) return; 
@@ -210,7 +210,7 @@ const DataManager = {
 };
 
 /**
- * 配置编辑器模块 (包含分层架构、行号解耦与颜色反馈)
+ * 配置编辑器模块
  */
 const ConfigEditor = {
     container: document.getElementById('tab-content-config'),
@@ -273,7 +273,6 @@ const ConfigEditor = {
         this.editor.innerText = rows.join('\n');
         this.refreshUI();
 
-        // 监听行为
         this.editor.onscroll = () => {
             this.gutter.scrollTop = this.editor.scrollTop;
             this.highlightLayer.style.transform = `translateY(-${this.editor.scrollTop}px)`;
@@ -312,9 +311,7 @@ const ConfigEditor = {
 
         try {
             const info = await vllink.getConfigInfo();
-            // 写入
             await vllink.writeConfig(userInputText, info.size);
-            // 回读校验
             const verifyText = await vllink.readConfig(info.size);
             const verifyRows = verifyText.replace(/\r/g, '').split('\n').filter(line => !line.trim().startsWith('Config_Password='));
             
@@ -338,11 +335,14 @@ const ConfigEditor = {
         }
     },
 
-    lockUI(l) { document.body.classList.toggle('pointer-events-none', l); this.container.classList.toggle('opacity-50', l); }
+    lockUI(locked) {
+        document.body.classList.toggle('pointer-events-none', locked);
+        this.container.classList.toggle('opacity-50', locked);
+    }
 };
 
 /**
- * 核心逻辑集成与状态机 (包含静默重连与句柄释放)
+ * 核心逻辑集成与状态机
  */
 const vllink = new VllinkManager();
 let pollTimer = null;
@@ -355,11 +355,11 @@ const UI = {
     status: document.getElementById('connectionStatus')
 };
 
-// 提取的连接核心流程
+// 执行连接并启动轮询
 async function performConnection(autoDevice = null) {
     await vllink.connect(autoDevice);
     
-    // 缓存设备特征以备自动重连
+    // 缓存设备特征以备后续原生事件对比
     lastDeviceCache = {
         vid: vllink.device.vendorId,
         pid: vllink.device.productId,
@@ -373,7 +373,7 @@ async function performConnection(autoDevice = null) {
     lastFingerprint = "";
 
     UI.status.innerText = "ONLINE: " + vllink.device.productName;
-    UI.connectBtn.innerText = "Disconnect";
+    UI.connectBtn.innerText = "DISCONNECT (释放给第三方)";
     UI.connectBtn.classList.remove('bg-primary', 'bg-rose-500');
     UI.connectBtn.classList.add('bg-green-600');
     
@@ -397,7 +397,7 @@ async function performConnection(autoDevice = null) {
     }, 250);
 }
 
-// 统一的断开处理（物理拔出 或 软件主动释放）
+// 主动断开或物理断开时的清理逻辑
 async function handleDeviceDisconnect(manual = false) {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     
@@ -406,7 +406,7 @@ async function handleDeviceDisconnect(manual = false) {
     }
 
     UI.status.innerText = "OFFLINE";
-    UI.connectBtn.innerText = "Connect Vllink";
+    UI.connectBtn.innerText = "CONNECT DEVICE";
     UI.connectBtn.classList.remove('bg-green-600', 'bg-rose-500');
     UI.connectBtn.classList.add('bg-primary');
     UI.deviceList.innerHTML = `<div class="text-center py-10 text-slate-500 text-xs italic">Waiting for connection...</div>`;
@@ -426,30 +426,29 @@ async function handleDeviceDisconnect(manual = false) {
     vllink.device = null;
 }
 
-// 连接按钮点击事件 (具备双向 Toggle 逻辑)
-UI.connectBtn.addEventListener('click', async () => {
-    // 已经连接时，点击执行断开（释放句柄给 OpenOCD）
-    if (vllink.device) {
-        await handleDeviceDisconnect(true);
-        return;
-    }
-    // 未连接时，执行连接
+// ==========================================
+// 新增核心逻辑：网页启动时的“静默自动重连”
+// ==========================================
+async function autoConnectOnLoad() {
+    if (!navigator.usb) return;
     try {
-        await performConnection();
+        // 获取已经被用户授权且当前插在电脑上的 USB 设备
+        const authorizedDevices = await navigator.usb.getDevices();
+        const matchedDevice = authorizedDevices.find(d => 
+            vllink.filters.some(f => f.vendorId === d.vendorId && f.productId === d.productId)
+        );
+
+        // 如果找到了已授权的 Vllink，免弹出窗口直接连接
+        if (matchedDevice) {
+            UI.status.innerText = "AUTO CONNECTING...";
+            await performConnection(matchedDevice);
+        }
     } catch (e) {
-        console.warn("Connect aborted or error: " + e.message);
+        console.warn("Auto connect on load failed:", e);
     }
-});
+}
 
-// 按钮 Hover 效果 (仅在已连接状态时生效)
-UI.connectBtn.addEventListener('mouseenter', () => {
-    if(vllink.device) UI.connectBtn.classList.replace('bg-green-600', 'bg-rose-500');
-});
-UI.connectBtn.addEventListener('mouseleave', () => {
-    if(vllink.device) UI.connectBtn.classList.replace('bg-rose-500', 'bg-green-600');
-});
-
-// 浏览器原生 WebUSB 事件监听：自动重连
+// 原生监听：中途拔插的静默拉起重连
 navigator.usb.addEventListener('connect', async (event) => {
     const dev = event.device;
     if (!vllink.device && lastDeviceCache && 
@@ -460,20 +459,39 @@ navigator.usb.addEventListener('connect', async (event) => {
             UI.status.innerText = "AUTO CONNECTING...";
             await performConnection(dev);
         } catch (e) {
-            console.warn("Auto connect failed:", e);
             handleDeviceDisconnect();
         }
     }
 });
 
-// 浏览器原生 WebUSB 事件监听：物理断开
+// 原生监听：物理断开拔出
 navigator.usb.addEventListener('disconnect', (event) => {
     if (vllink.device && event.device === vllink.device) {
         handleDeviceDisconnect();
     }
 });
 
-// 列表交互：重启与切换
+// 手动点击大按钮：连接或断开
+UI.connectBtn.addEventListener('click', async () => {
+    if (vllink.device) {
+        await handleDeviceDisconnect(true);
+        return;
+    }
+    try {
+        await performConnection();
+    } catch (e) {
+        console.warn("Connect aborted or error: " + e.message);
+    }
+});
+
+UI.connectBtn.addEventListener('mouseenter', () => {
+    if(vllink.device) UI.connectBtn.classList.replace('bg-green-600', 'bg-rose-500');
+});
+UI.connectBtn.addEventListener('mouseleave', () => {
+    if(vllink.device) UI.connectBtn.classList.replace('bg-rose-500', 'bg-green-600');
+});
+
+// 列表点击切换或重启
 UI.deviceList.addEventListener('click', async (e) => {
     const restartBtn = e.target.closest('.restart-btn');
     if (restartBtn) {
@@ -488,7 +506,6 @@ UI.deviceList.addEventListener('click', async (e) => {
     if (card) vllink.selectDebugger(parseInt(card.dataset.id));
 });
 
-// UI 渲染：设备列表刷新
 function updateDisplay(info) {
     const all = [{ ...info.local, id: 0, type: 'USB' }];
     info.remote.forEach(r => all.push({ ...r, type: 'WIFI' }));
@@ -535,7 +552,10 @@ function formatTime(s) {
     return `${h}:${m}:${sec}`;
 }
 
-// 页面全局初始化
+// 全局初始化
 ThemeManager.init();
 TabManager.init();
 ConfigEditor.init();
+
+// 执行开屏自动免打扰重连
+autoConnectOnLoad();
